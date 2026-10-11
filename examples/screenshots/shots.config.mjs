@@ -702,6 +702,30 @@ export const shots = [
     }
   },
   {
+    // Undo for a change made outside the app: a commit from the terminal is
+    // read back from the reflog and previewed before it is undone.
+    out: 'undo-outside',
+    repos: ['reflog-recovery'],
+    themes: ['light'],
+    prepare: async ({ repoPaths, run }) => {
+      const repo = repoPaths['reflog-recovery']
+      await writeFile(
+        join(repo, 'app.js'),
+        "function main(config = {}) { console.log('app v2', config) }\nmodule.exports = { main }\n"
+      )
+      await run('git', ['-C', repo, 'commit', '-qam', 'fix: accept an empty config'])
+    },
+    drive: async (page, repoPaths) => {
+      const repo = repoPaths['reflog-recovery']
+      await page.evaluate(async (p) => {
+        await window.__shot.waitForRepo(p)
+        await window.__shot.repo.getState().undo(p)
+      }, repo)
+      await page.waitForSelector('.modal-message')
+      await page.waitForTimeout(400)
+    }
+  },
+  {
     // Guided git bisect.
     out: 'bisect',
     repos: ['bisect-bug'],
