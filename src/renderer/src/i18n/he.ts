@@ -1760,6 +1760,10 @@ export const he: Dict = {
   'stash.dropMsg': 'לזרוק את ״{message}״? לא ניתן לבטל את הפעולה.',
   'stash.dropConfirm': 'זריקה',
   'stash.copySha': 'העתקת ה־SHA',
+  'stash.alreadyApplied.title': 'ה-stash הזה כבר הוחל',
+  'stash.alreadyApplied.message': 'תיקיית העבודה כבר מכילה בדיוק את השינויים שב-stash הזה, כך שאין מה להחיל.\n\nמחקו את ה-stash כדי להסיר אותו מהרשימה. השינויים שלכם נשארים בתיקיית העבודה.',
+  'stash.alreadyApplied.ok': 'מחיקת ה-stash',
+  'stash.blockedByChanges': 'לא ניתן להחיל את ה-stash: שינויים שלא בוצע להם commit ב-{files} יידרסו. בצעו להם commit או stash קודם.',
 
   // Graph columns
   'graph.col.branch': 'ענף / תגית',

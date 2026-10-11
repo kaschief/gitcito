@@ -1754,6 +1754,10 @@ export const es: Dict = {
   'stash.dropMsg': '¿Eliminar "{message}"? Esta acción no se puede deshacer.',
   'stash.dropConfirm': 'Eliminar',
   'stash.copySha': 'Copiar SHA',
+  'stash.alreadyApplied.title': 'Este stash ya está aplicado',
+  'stash.alreadyApplied.message': 'Tu directorio de trabajo ya tiene exactamente los cambios de este stash, así que no hay nada que aplicar.\n\nDescarta el stash para quitarlo de la lista. Tus cambios se quedan en el directorio de trabajo.',
+  'stash.alreadyApplied.ok': 'Descartar stash',
+  'stash.blockedByChanges': 'No se puede aplicar el stash: se sobrescribirían los cambios sin confirmar en {files}. Confírmalos o guárdalos en un stash primero.',
 
   // Graph columns
   'graph.col.branch': 'RAMA / ETIQUETA',

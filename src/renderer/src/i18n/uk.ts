@@ -1760,6 +1760,10 @@ export const uk: Dict = {
   'stash.dropMsg': 'Прибрати «{message}»? Цю дію не можна скасувати.',
   'stash.dropConfirm': 'Прибрати',
   'stash.copySha': 'Копіювати SHA',
+  'stash.alreadyApplied.title': 'Цей stash уже застосовано',
+  'stash.alreadyApplied.message': 'У робочому каталозі вже є саме ті зміни, що в цьому stash, — застосовувати нічого.\n\nВидаліть stash, щоб прибрати його зі списку. Ваші зміни залишаться в робочому каталозі.',
+  'stash.alreadyApplied.ok': 'Видалити stash',
+  'stash.blockedByChanges': 'Не вдалося застосувати stash: незакомічені зміни в {files} було б перезаписано. Спершу закомітьте їх або сховайте в stash.',
 
   // Колонки графа
   'graph.col.branch': 'ГІЛКА / ТЕГ',

@@ -1756,6 +1756,10 @@ export const en = {
   'stash.dropMsg': 'Drop "{message}"? This cannot be undone.',
   'stash.dropConfirm': 'Drop',
   'stash.copySha': 'Copy SHA',
+  'stash.alreadyApplied.title': 'This stash is already applied',
+  'stash.alreadyApplied.message': 'Your working directory already has exactly the changes in this stash, so there is nothing to apply.\n\nDrop the stash to clear it from the list. Your changes stay in the working directory.',
+  'stash.alreadyApplied.ok': 'Drop stash',
+  'stash.blockedByChanges': 'Can’t apply the stash: uncommitted changes in {files} would be overwritten. Commit or stash them first.',
 
   // Graph columns
   'graph.col.branch': 'BRANCH / TAG',

@@ -47,6 +47,7 @@ import { isProtectedBranch } from '../lib/repoConfig'
 import { commitHookFailureHint } from '../lib/commitLint'
 import { isLockErrorMessage, lockRepairPlan } from '../lib/gitLocks'
 import { forkUpstream, prsFromFork } from '../lib/hosting'
+import { overwrittenLocalChanges, readableGitError, summarizePaths } from '../lib/gitErrors'
 import { parseRouteConflict } from '../lib/stackOrder'
 import { timeAgo } from '../lib/timeAgo'
 import { splitCommitMessage } from '../lib/commitMenuCapabilities'
@@ -232,6 +233,39 @@ function promptStashOverwrite(message: string, path: string, index: number, pop:
     confirmLabel: t('confirm.overwriteUntracked.ok'),
     onConfirm: () => void repoActions.stashApplyOverwrite(path, index, pop)
   })
+  return true
+}
+
+/**
+ * A stash apply/pop that git refused because files it touches have local edits.
+ * Most often those edits *are* the stash — a pull's autostash was restored but
+ * never dropped — and then the honest answer is "already applied, drop it",
+ * not a wall of `git status`. Otherwise name the files that are in the way.
+ * Returns true when it took over the error (the caller then stays quiet).
+ *
+ * Checked before the untracked-overwrite offer: git reports both when a `-u`
+ * stash meets edited tracked files, and the overwrite would delete the
+ * untracked files only for the retry to fail on the tracked ones.
+ */
+function explainStashBlocked(message: string, path: string, index: number): boolean {
+  const files = overwrittenLocalChanges(message)
+  if (!files) return false
+  void gitApi
+    .stashAlreadyApplied(path, index)
+    .then((applied) => {
+      if (!applied) {
+        toast('error', interp(t('stash.blockedByChanges'), { files: summarizePaths(files) }), { repoPath: path })
+        return
+      }
+      useUIStore.getState().openModal({
+        kind: 'confirm',
+        title: t('stash.alreadyApplied.title'),
+        message: t('stash.alreadyApplied.message'),
+        confirmLabel: t('stash.alreadyApplied.ok'),
+        onConfirm: () => void repoActions.stashDrop(path, index)
+      })
+    })
+    .catch(() => toast('error', readableGitError(message), { repoPath: path }))
   return true
 }
 
@@ -850,7 +884,7 @@ export const useRepoStore = create<RepoStoreState>((set, get) => ({
         if (promptLockRepair(message, path, () => void get().run(path, label, fn, undoEntry, op, onError, refetch)))
           return false
         if (isConflictErrorMessage(message)) toast('info', conflictHint(message))
-        else toast('error', message, { repoPath: path })
+        else toast('error', readableGitError(message), { repoPath: path })
         return false
       } finally {
         const uiEnd = useUIStore.getState()
@@ -2160,7 +2194,7 @@ export const repoActions = {
         redo: () => gitApi.stashPop(path, 0)
       },
       null,
-      (msg) => promptStashOverwrite(msg, path, index, true),
+      (msg) => explainStashBlocked(msg, path, index) || promptStashOverwrite(msg, path, index, true),
       ['status', 'stashes']
     ),
 
@@ -2171,7 +2205,7 @@ export const repoActions = {
     useRepoStore
       .getState()
       .run(path, t('act.appliedStash'), () => gitApi.stashApply(path, index), undefined, null, (msg) =>
-        promptStashOverwrite(msg, path, index, false)
+        explainStashBlocked(msg, path, index) || promptStashOverwrite(msg, path, index, false)
       , ['status', 'stashes']),
 
   stashApplyOverwrite: (path: string, index = 0, pop = false) =>

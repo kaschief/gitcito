@@ -1761,6 +1761,10 @@ export const nl: Dict = {
   'stash.dropMsg': '"{message}" weggooien? Dit kan niet ongedaan gemaakt worden.',
   'stash.dropConfirm': 'Weggooien',
   'stash.copySha': 'SHA kopiëren',
+  'stash.alreadyApplied.title': 'Deze stash is al toegepast',
+  'stash.alreadyApplied.message': 'Je werkmap bevat al precies de wijzigingen uit deze stash, dus er valt niets toe te passen.\n\nVerwijder de stash om hem uit de lijst te halen. Je wijzigingen blijven in de werkmap.',
+  'stash.alreadyApplied.ok': 'Stash verwijderen',
+  'stash.blockedByChanges': 'Kan de stash niet toepassen: niet-gecommitte wijzigingen in {files} zouden worden overschreven. Commit of stash ze eerst.',
 
   // Graafkolommen
   'graph.col.branch': 'BRANCH / TAG',

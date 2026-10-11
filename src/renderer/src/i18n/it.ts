@@ -1734,6 +1734,10 @@ export const it: Dict = {
   'stash.dropMsg': 'Eliminare "{message}"? Non si può annullare.',
   'stash.dropConfirm': 'Elimina',
   'stash.copySha': 'Copia lo SHA',
+  'stash.alreadyApplied.title': 'Questo stash è già applicato',
+  'stash.alreadyApplied.message': 'La tua directory di lavoro contiene già esattamente le modifiche di questo stash, quindi non c’è nulla da applicare.\n\nElimina lo stash per toglierlo dall’elenco. Le tue modifiche restano nella directory di lavoro.',
+  'stash.alreadyApplied.ok': 'Elimina stash',
+  'stash.blockedByChanges': 'Impossibile applicare lo stash: le modifiche non committate in {files} verrebbero sovrascritte. Prima esegui il commit o lo stash.',
 
   'graph.col.branch': 'BRANCH / TAG',
   'graph.col.graph': 'GRAFO',

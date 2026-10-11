@@ -1733,6 +1733,10 @@ export const fr: Dict = {
   'stash.dropMsg': 'Supprimer « {message} » ? C’est irréversible.',
   'stash.dropConfirm': 'Supprimer',
   'stash.copySha': 'Copier le SHA',
+  'stash.alreadyApplied.title': 'Ce stash est déjà appliqué',
+  'stash.alreadyApplied.message': 'Votre répertoire de travail contient déjà exactement les modifications de ce stash : il n’y a rien à appliquer.\n\nSupprimez le stash pour le retirer de la liste. Vos modifications restent dans le répertoire de travail.',
+  'stash.alreadyApplied.ok': 'Supprimer le stash',
+  'stash.blockedByChanges': 'Impossible d’appliquer le stash : les modifications non commitées dans {files} seraient écrasées. Commitez-les ou mettez-les dans un stash d’abord.',
 
   'graph.col.branch': 'BRANCHE / ÉTIQUETTE',
   'graph.col.graph': 'GRAPHE',

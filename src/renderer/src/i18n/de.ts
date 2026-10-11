@@ -1760,6 +1760,10 @@ export const de: Dict = {
   'stash.dropMsg': '„{message}“ verwerfen? Das lässt sich nicht rückgängig machen.',
   'stash.dropConfirm': 'Verwerfen',
   'stash.copySha': 'SHA kopieren',
+  'stash.alreadyApplied.title': 'Dieser Stash ist bereits angewendet',
+  'stash.alreadyApplied.message': 'Dein Arbeitsverzeichnis enthält bereits genau die Änderungen aus diesem Stash, es gibt also nichts anzuwenden.\n\nVerwirf den Stash, um ihn aus der Liste zu entfernen. Deine Änderungen bleiben im Arbeitsverzeichnis.',
+  'stash.alreadyApplied.ok': 'Stash verwerfen',
+  'stash.blockedByChanges': 'Stash kann nicht angewendet werden: Nicht committete Änderungen in {files} würden überschrieben. Committe oder stashe sie zuerst.',
 
   // Graph columns
   'graph.col.branch': 'BRANCH / TAG',

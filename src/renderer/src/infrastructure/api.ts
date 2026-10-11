@@ -280,6 +280,7 @@ export const gitApi = {
   stashApplyOverwrite: (path: string, index?: number, pop?: boolean) =>
     call<void>('stashApplyOverwrite', path, index, pop),
   stashDrop: (path: string, index?: number) => call<void>('stashDrop', path, index),
+  stashAlreadyApplied: (path: string, index?: number) => call<boolean>('stashAlreadyApplied', path, index),
   renameStash: (path: string, index: number, message: string) => call<void>('renameStash', path, index, message),
   stashApplyFiles: (path: string, sha: string, tracked: string[], untracked: string[]) =>
     call<void>('stashApplyFiles', path, sha, tracked, untracked),

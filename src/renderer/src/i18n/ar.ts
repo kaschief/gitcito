@@ -1760,6 +1760,10 @@ export const ar: Dict = {
   'stash.dropMsg': 'أتسقط «{message}»؟ لا يمكن التراجع عن هذا.',
   'stash.dropConfirm': 'إسقاط',
   'stash.copySha': 'نسخ المعرّف',
+  'stash.alreadyApplied.title': 'هذا الـ stash مطبّق بالفعل',
+  'stash.alreadyApplied.message': 'يحتوي مجلد العمل بالفعل على تغييرات هذا الـ stash نفسها تمامًا، لذا لا يوجد ما يُطبَّق.\n\nاحذف الـ stash لإزالته من القائمة. تبقى تغييراتك في مجلد العمل.',
+  'stash.alreadyApplied.ok': 'حذف الـ stash',
+  'stash.blockedByChanges': 'تعذّر تطبيق الـ stash: ستُستبدل التغييرات غير المُثبتة في {files}. ثبّتها أو ضعها في stash أولًا.',
 
   // Graph columns
   'graph.col.branch': 'الفرع / الوسم',

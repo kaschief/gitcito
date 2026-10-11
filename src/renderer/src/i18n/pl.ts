@@ -1760,6 +1760,10 @@ export const pl: Dict = {
   'stash.dropMsg': 'Porzucić "{message}"? Tego nie da się cofnąć.',
   'stash.dropConfirm': 'Porzuć',
   'stash.copySha': 'Kopiuj SHA',
+  'stash.alreadyApplied.title': 'Ten stash jest już zastosowany',
+  'stash.alreadyApplied.message': 'Twój katalog roboczy zawiera już dokładnie zmiany z tego stasha, więc nie ma czego stosować.\n\nUsuń stash, aby zniknął z listy. Twoje zmiany zostają w katalogu roboczym.',
+  'stash.alreadyApplied.ok': 'Usuń stash',
+  'stash.blockedByChanges': 'Nie można zastosować stasha: niezatwierdzone zmiany w {files} zostałyby nadpisane. Najpierw je zatwierdź lub schowaj w stashu.',
 
   // Kolumny grafu
   'graph.col.branch': 'BRANCH / TAG',

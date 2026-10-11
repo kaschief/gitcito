@@ -1835,6 +1835,27 @@ export const shots = [
     }
   },
   {
+    // A stash whose changes are already in the working tree — the state a pull's
+    // autostash leaves when it restores but does not drop. Applying it again is
+    // refused by git; the app recognises why and offers to drop it instead.
+    out: 'stash-already-applied',
+    repos: ['stash-picking'],
+    themes: ['light'],
+    prepare: async ({ repoPaths, run }) => {
+      await run('git', ['-C', repoPaths['stash-picking'], 'stash', 'apply'])
+    },
+    drive: async (page, repoPaths) => {
+      const repo = repoPaths['stash-picking']
+      await page.evaluate(async (path) => {
+        const shot = window.__shot
+        await shot.waitForRepo(path)
+        void shot.repoActions.stashApply(path, 0)
+      }, repo)
+      await page.waitForSelector('.modal-actions')
+      await page.waitForTimeout(500)
+    }
+  },
+  {
     // Tag creation — lightweight / annotated / signed, and whether to push.
     out: 'create-tag',
     repos: ['tags-and-releases'],

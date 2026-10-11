@@ -1760,6 +1760,10 @@ export const zhCN: Dict = {
   'stash.dropMsg': '丢弃「{message}」？此操作无法撤销。',
   'stash.dropConfirm': '丢弃',
   'stash.copySha': '复制 SHA',
+  'stash.alreadyApplied.title': '此 stash 已应用',
+  'stash.alreadyApplied.message': '工作目录中已经有与此 stash 完全相同的更改，没有需要应用的内容。\n\n删除该 stash 即可将其从列表中移除。你的更改会保留在工作目录中。',
+  'stash.alreadyApplied.ok': '删除 stash',
+  'stash.blockedByChanges': '无法应用 stash：{files} 中未提交的更改会被覆盖。请先提交或 stash 它们。',
 
   // Graph columns
   'graph.col.branch': '分支 / 标签',

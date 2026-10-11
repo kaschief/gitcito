@@ -1761,6 +1761,10 @@ export const ptBR: Dict = {
   'stash.dropMsg': 'Descartar "{message}"? Isso não pode ser desfeito.',
   'stash.dropConfirm': 'Descartar',
   'stash.copySha': 'Copiar SHA',
+  'stash.alreadyApplied.title': 'Este stash já foi aplicado',
+  'stash.alreadyApplied.message': 'Seu diretório de trabalho já tem exatamente as alterações deste stash, então não há nada para aplicar.\n\nDescarte o stash para tirá-lo da lista. Suas alterações continuam no diretório de trabalho.',
+  'stash.alreadyApplied.ok': 'Descartar stash',
+  'stash.blockedByChanges': 'Não foi possível aplicar o stash: alterações não commitadas em {files} seriam sobrescritas. Faça commit ou stash delas primeiro.',
 
   // Colunas do grafo
   'graph.col.branch': 'BRANCH / TAG',

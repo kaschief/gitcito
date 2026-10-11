@@ -1733,6 +1733,10 @@ export const ja: Dict = {
   'stash.dropMsg': '「{message}」を破棄しますか？ 取り消せません。',
   'stash.dropConfirm': '破棄',
   'stash.copySha': 'SHA をコピー',
+  'stash.alreadyApplied.title': 'この stash はすでに適用されています',
+  'stash.alreadyApplied.message': '作業ディレクトリにはこの stash とまったく同じ変更がすでにあるため、適用するものはありません。\n\nstash を削除すると一覧から消えます。変更は作業ディレクトリに残ります。',
+  'stash.alreadyApplied.ok': 'stash を削除',
+  'stash.blockedByChanges': 'stash を適用できません: {files} のコミットされていない変更が上書きされます。先にコミットするか stash してください。',
 
   'graph.col.branch': 'ブランチ / タグ',
   'graph.col.graph': 'グラフ',

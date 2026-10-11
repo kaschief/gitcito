@@ -3276,6 +3276,40 @@ export const gitService = {
   },
 
   /**
+   * Whether the working tree already holds exactly what a stash would restore.
+   * That is the usual state after a pull whose autostash was put back but never
+   * dropped: git then refuses the apply because the stash's files "have local
+   * changes", and those changes are the stash itself. Saying so lets the user
+   * drop it instead of hunting for a conflict that does not exist.
+   */
+  async stashAlreadyApplied(repoPath: string, index = 0): Promise<boolean> {
+    const git = gitFor(repoPath)
+    const ref = `stash@{${index}}`
+    const tracked = (await git.raw(['diff', '--name-only', '-z', `${ref}^1`, ref])).split('\0').filter(Boolean)
+    // `git diff <commit> -- paths` compares that commit's tree with the working
+    // tree, so no output means every tracked file the stash touched matches.
+    if (tracked.length && (await git.raw(['diff', '--name-only', ref, '--', ...tracked])).trim()) return false
+
+    // The untracked part (`^3`, only for `stash -u`) is not in the index, so diff
+    // cannot see it. Compare blob hashes against the files on disk instead.
+    const untrackedListing = await git.raw(['ls-tree', '-r', '-z', `${ref}^3`]).catch(() => '')
+    const untracked = untrackedListing
+      .split('\0')
+      .filter(Boolean)
+      .map((entry) => {
+        const tab = entry.indexOf('\t')
+        return { sha: entry.slice(0, tab).split(' ')[2], path: entry.slice(tab + 1) }
+      })
+    if (!tracked.length && !untracked.length) return false
+    if (untracked.some((u) => !existsSync(join(repoPath, u.path)))) return false
+    if (untracked.length) {
+      const onDisk = (await git.raw(['hash-object', '--', ...untracked.map((u) => u.path)])).trim().split('\n')
+      if (untracked.some((u, i) => onDisk[i] !== u.sha)) return false
+    }
+    return true
+  },
+
+  /**
    * Create a new branch from a stash and apply it there (`git stash branch`).
    * Branches off the commit the stash was made on, checks it out, applies the
    * stash, and drops it on success — handy when a stash won't apply cleanly onto
@@ -7410,6 +7444,7 @@ const READ_METHODS = new Set<string>([
   'branches',
   'status',
   'stashes',
+  'stashAlreadyApplied',
   'remotes',
   'stackInfo',
   'stackLeaves',

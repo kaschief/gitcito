@@ -8,6 +8,7 @@ import { readDraft, settleDraft } from '../src/renderer/src/lib/boundedNumber'
 import { treeStatusOf } from '../src/renderer/src/lib/treeStatus'
 import { timeAgo, isStale, STALE_AFTER_MS } from '../src/renderer/src/lib/timeAgo'
 import { isLockErrorMessage, lockRepairPlan } from '../src/renderer/src/lib/gitLocks'
+import { overwrittenLocalChanges, readableGitError, summarizePaths } from '../src/renderer/src/lib/gitErrors'
 import { stackOrder, moveLevel, adoptableBranches, targetFor } from '../src/renderer/src/lib/stackOrder'
 import { planStackSubmit, summariseStackPlan } from '../src/shared/stackPr'
 import { groupPrStacks, stackRowStates } from '../src/renderer/src/lib/prStacks'
@@ -7172,5 +7173,45 @@ describe('bounded number drafts', () => {
 
   it('treats a missing max as open-ended', () => {
     expect(readDraft('123456', { min: 0 })).toEqual({ status: 'valid', value: 123456 })
+  })
+})
+
+describe('readableGitError', () => {
+  const STASH_APPLY = [
+    "Error invoking remote method 'git': Error: On branch main",
+    "Your branch is up to date with 'origin/main'.",
+    '',
+    'Changes not staged for commit:',
+    '\tmodified:   a.pine',
+    'error: Your local changes to the following files would be overwritten by merge:',
+    '\ta.pine',
+    '\tscripts/b.mjs',
+    'Please commit your changes or stash them before you merge.',
+    'Aborting'
+  ].join('\n')
+
+  it('drops the IPC wrapper and leads with git\'s verdict', () => {
+    const out = readableGitError(STASH_APPLY)
+    expect(out.split('\n')[0]).toBe('Your local changes to the following files would be overwritten by merge:')
+    expect(out).not.toMatch(/Error invoking remote method/)
+    // The status git printed first is kept below, for "Show more".
+    expect(out).toContain("Your branch is up to date with 'origin/main'.")
+  })
+
+  it('leaves a message that already opens with its verdict alone, minus the wrapper', () => {
+    expect(readableGitError("Error invoking remote method 'git': GitError: fatal: not a git repository")).toBe(
+      'fatal: not a git repository'
+    )
+    expect(readableGitError('nothing to commit')).toBe('nothing to commit')
+  })
+
+  it('lists the files that block a merge, and nothing for other failures', () => {
+    expect(overwrittenLocalChanges(STASH_APPLY)).toEqual(['a.pine', 'scripts/b.mjs'])
+    expect(overwrittenLocalChanges('fatal: bad revision')).toBeNull()
+  })
+
+  it('summarizes long path lists', () => {
+    expect(summarizePaths(['a', 'b'])).toBe('a, b')
+    expect(summarizePaths(['a', 'b', 'c', 'd'])).toBe('a, b, c, …')
   })
 })

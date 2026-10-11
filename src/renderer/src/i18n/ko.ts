@@ -1760,6 +1760,10 @@ export const ko: Dict = {
   'stash.dropMsg': '"{message}"를 버릴까요? 되돌릴 수 없습니다.',
   'stash.dropConfirm': '버리기',
   'stash.copySha': 'SHA 복사',
+  'stash.alreadyApplied.title': '이 stash는 이미 적용되었습니다',
+  'stash.alreadyApplied.message': '작업 디렉터리에 이 stash와 똑같은 변경 사항이 이미 있으므로 적용할 것이 없습니다.\n\nstash를 삭제하면 목록에서 사라집니다. 변경 사항은 작업 디렉터리에 그대로 남습니다.',
+  'stash.alreadyApplied.ok': 'stash 삭제',
+  'stash.blockedByChanges': 'stash를 적용할 수 없습니다: {files}의 커밋되지 않은 변경 사항을 덮어쓰게 됩니다. 먼저 커밋하거나 stash하세요.',
 
   // 그래프 열
   'graph.col.branch': '브랜치 / 태그',

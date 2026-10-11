@@ -1733,6 +1733,10 @@ export const tr: Dict = {
   'stash.dropMsg': '“{message}” atılsın mı? Bu geri alınamaz.',
   'stash.dropConfirm': 'At',
   'stash.copySha': 'SHA’yı kopyala',
+  'stash.alreadyApplied.title': 'Bu stash zaten uygulanmış',
+  'stash.alreadyApplied.message': 'Çalışma dizininde bu stash’teki değişikliklerin tam olarak aynısı zaten var, uygulanacak bir şey yok.\n\nListeden kaldırmak için stash’i silin. Değişiklikleriniz çalışma dizininde kalır.',
+  'stash.alreadyApplied.ok': 'Stash’i sil',
+  'stash.blockedByChanges': 'Stash uygulanamıyor: {files} içindeki commit edilmemiş değişikliklerin üzerine yazılır. Önce commit edin ya da stash’leyin.',
 
   'graph.col.branch': 'DAL / ETİKET',
   'graph.col.graph': 'GRAFİK',

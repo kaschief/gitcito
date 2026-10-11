@@ -1760,6 +1760,10 @@ export const ru: Dict = {
   'stash.dropMsg': 'Удалить «{message}»? Это необратимо.',
   'stash.dropConfirm': 'Удалить',
   'stash.copySha': 'Скопировать SHA',
+  'stash.alreadyApplied.title': 'Этот stash уже применён',
+  'stash.alreadyApplied.message': 'В рабочем каталоге уже есть ровно те изменения, что в этом stash, — применять нечего.\n\nУдалите stash, чтобы убрать его из списка. Ваши изменения останутся в рабочем каталоге.',
+  'stash.alreadyApplied.ok': 'Удалить stash',
+  'stash.blockedByChanges': 'Не удалось применить stash: незакоммиченные изменения в {files} были бы перезаписаны. Сначала закоммитьте их или уберите в stash.',
 
   // Колонки графа
   'graph.col.branch': 'ВЕТКА / ТЕГ',
