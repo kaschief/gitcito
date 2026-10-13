@@ -94,3 +94,7 @@ No new strings, so no locale changes. `docs/help/diffs.md` gets a "When the file
 ![After](https://raw.githubusercontent.com/kaschief/gitcito/402146a01b72b775c8731e054789abbb66d6f570/docs/screenshots/file-follows-git.webp)
 
 `config.ts` opened on its Unstaged diff, then staged from outside the app. Before this change the same steps leave "No changes to display" under an **UNSTAGED** chip; after it, the viewer shows the **STAGED** diff.
+
+---
+
+This is offered as a suggestion. If it doesn't fit Gitcito's direction, feel free to close it; I'm happy to adjust, split or rework it.

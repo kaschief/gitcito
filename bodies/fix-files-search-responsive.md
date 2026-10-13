@@ -105,3 +105,7 @@ limits.
 ### Show it
 
 n/a — nothing visible changes; see the measurements in the summary.
+
+---
+
+This is offered as a suggestion. If it doesn't fit Gitcito's direction, feel free to close it; I'm happy to adjust, split or rework it.

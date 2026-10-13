@@ -99,6 +99,8 @@ playground repo and stages its untracked file first, so the tree holds a staged 
 4. Start a merge that conflicts and discard a non-conflicted file: the confirm still says "This
    cannot be undone.", and the toolbar Undo has no entry for it.
 
+**Review order.** This touches `stores/repo.ts`, as does the hunk and line actions PR. Each merges on its own; whichever lands second I'll rebase.
+
 ## Type of change
 
 - [x] `feat:` New feature
@@ -140,3 +142,7 @@ playground repo and stages its untracked file first, so the tree holds a staged 
 The Discard all confirm over a tree that holds a staged new file. Before this PR it read
 "Discard ALL staged and unstaged changes? This cannot be undone." (and left the new file behind);
 now it reads "Discard ALL staged and unstaged changes, new files included? You can undo this."
+
+---
+
+This is offered as a suggestion. If it doesn't fit Gitcito's direction, feel free to close it; I'm happy to adjust, split or rework it.

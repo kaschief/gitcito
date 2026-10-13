@@ -121,3 +121,6 @@ checkout and verify the planned soft reset keeps the change staged. 18 new keys,
 
 The preview Gitcito shows before undoing a commit made in a terminal (`docs/help/recovery.md#changes-made-outside-gitcito`).
 
+---
+
+This is offered as a suggestion. If it doesn't fit Gitcito's direction, feel free to close it; I'm happy to adjust, split or rework it.

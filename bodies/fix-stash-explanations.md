@@ -120,3 +120,7 @@ English "would be overwritten" message, like the existing untracked-collision ch
 **After**
 
 ![After](https://raw.githubusercontent.com/kaschief/gitcito/82d2736018d794b3af475c8d4571d8a91c3abcdc/docs/screenshots/stash-already-applied.webp)
+
+---
+
+This is offered as a suggestion. If it doesn't fit Gitcito's direction, feel free to close it; I'm happy to adjust, split or rework it.

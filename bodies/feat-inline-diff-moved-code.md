@@ -77,6 +77,8 @@ section with the screenshot and the limits. No new modal, page or command, so
 `diff.movedTitle`, `diff.movedTo`, `diff.movedFrom`) are translated in all 16
 locales with the same `{line}` placeholder.
 
+**Review order.** This touches `DiffViewer.tsx`, as does the hunk and line actions PR. Each merges on its own; whichever lands second I'll rebase.
+
 ## Type of change
 
 - [x] `feat:` New feature
@@ -119,3 +121,7 @@ A function moved from the top of `utils.ts` to the bottom: both copies tinted
 blue with arrows pointing at each other, while the one real edit
 (`DEFAULT_TIMEOUT`) stays red/green with word marks. Before this change the same
 diff showed the move as a red block and an unrelated green block.
+
+---
+
+This is offered as a suggestion. If it doesn't fit Gitcito's direction, feel free to close it; I'm happy to adjust, split or rework it.

@@ -56,6 +56,8 @@ Patch building moved out of `DiffViewer.tsx` into `lib/hunkPatch.ts` (pure, test
 5. Stash a change, open the stash's file and use *Apply hunk*; check the stash is still listed.
 6. Turn on Split. Click either side of the edited `host` row and check both halves select.
 
+**Review order.** This touches `DiffViewer.tsx` and `stores/repo.ts`, as do the moved-code and undoable-discards PRs. Each merges on its own; whichever lands second I'll rebase.
+
 ## Type of change
 
 - [x] `feat:` New feature
@@ -95,3 +97,7 @@ Patch building moved out of `DiffViewer.tsx` into `lib/hunkPatch.ts` (pure, test
 ![After](https://raw.githubusercontent.com/kaschief/gitcito/ddd3ced7ffcf217f8d62aeff46838a703ecd7058/docs/screenshots/hunk-line-actions.webp)
 
 Two lines selected: the bar offers Stage selected and Discard selected, the hunk bar has Stage hunk and Discard hunk, and the right-click menu is open on a selected line. Before this change, the same diff offered only *Stage 2 lines* and *Stage hunk*, and right-click did nothing.
+
+---
+
+This is offered as a suggestion. If it doesn't fit Gitcito's direction, feel free to close it; I'm happy to adjust, split or rework it.
