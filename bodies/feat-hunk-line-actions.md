@@ -56,7 +56,7 @@ Patch building moved out of `DiffViewer.tsx` into `lib/hunkPatch.ts` (pure, test
 5. Stash a change, open the stash's file and use *Apply hunk*; check the stash is still listed.
 6. Turn on Split. Click either side of the edited `host` row and check both halves select.
 
-**Review order.** This touches `DiffViewer.tsx` and `stores/repo.ts`, as do the moved-code and undoable-discards PRs. Each merges on its own; whichever lands second I'll rebase.
+**Suggested review order** for this set of PRs: (1) files search, (2) open file follows git, (3) undoable discards, (4) moved-code highlighting, (5) hunk and line actions. This one is the largest and overlaps the most, so it is best reviewed last. Each merges on its own against main; where two touch the same files, I'll rebase whichever lands later.
 
 ## Type of change
 

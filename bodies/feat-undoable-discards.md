@@ -99,7 +99,7 @@ playground repo and stages its untracked file first, so the tree holds a staged 
 4. Start a merge that conflicts and discard a non-conflicted file: the confirm still says "This
    cannot be undone.", and the toolbar Undo has no entry for it.
 
-**Review order.** This touches `stores/repo.ts`, as does the hunk and line actions PR. Each merges on its own; whichever lands second I'll rebase.
+**Suggested review order** for this set of PRs: (1) files search, (2) open file follows git, (3) undoable discards, (4) moved-code highlighting, (5) hunk and line actions. This one shares `src/main/git.ts` and `docs/help/staging.md` with hunk and line actions. Each merges on its own against main; where two touch the same files, I'll rebase whichever lands later.
 
 ## Type of change
 

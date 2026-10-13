@@ -55,6 +55,8 @@ No new strings, so no locale changes. `docs/help/diffs.md` gets a "When the file
 8. Modify a file, open it, then `git checkout -- <file>`: the view closes instead of jumping to an old commit.
 9. `npm run playground:rebuild` afterwards.
 
+**Suggested review order** for this set of PRs: (1) files search, (2) open file follows git, (3) undoable discards, (4) moved-code highlighting, (5) hunk and line actions. This one shares `FileViewer.tsx` with hunk and line actions and `docs/help/diffs.md` with moved-code. Each merges on its own against main; where two touch the same files, I'll rebase whichever lands later.
+
 ## Type of change
 
 - [ ] `feat:` New feature

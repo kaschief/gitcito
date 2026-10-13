@@ -72,6 +72,8 @@ that an untracked file containing the word shows up.
 Handbook: a short paragraph in `docs/help/diffs.md` (Files tab) on how content search behaves and its
 limits.
 
+**Suggested review order** for this set of PRs: (1) files search, (2) open file follows git, (3) undoable discards, (4) moved-code highlighting, (5) hunk and line actions. This one conflicts with none of the others. Each merges on its own against main; where two touch the same files, I'll rebase whichever lands later.
+
 ## Type of change
 
 - [ ] `feat:` New feature

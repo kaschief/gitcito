@@ -77,7 +77,7 @@ section with the screenshot and the limits. No new modal, page or command, so
 `diff.movedTitle`, `diff.movedTo`, `diff.movedFrom`) are translated in all 16
 locales with the same `{line}` placeholder.
 
-**Review order.** This touches `DiffViewer.tsx`, as does the hunk and line actions PR. Each merges on its own; whichever lands second I'll rebase.
+**Suggested review order** for this set of PRs: (1) files search, (2) open file follows git, (3) undoable discards, (4) moved-code highlighting, (5) hunk and line actions. This one shares `DiffViewer.tsx` with hunk and line actions and `docs/help/diffs.md` with open file follows git. Each merges on its own against main; where two touch the same files, I'll rebase whichever lands later.
 
 ## Type of change
 
