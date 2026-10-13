@@ -1100,6 +1100,23 @@ export const shots = [
     clipPad: 10
   },
   {
+    // Other local branches behind their upstream: the dot on the Pull arrow and
+    // the menu section that catches them up. Cropped around the open menu, which
+    // the padding stretches to take in the Pull button above it.
+    out: 'pull-branches-behind',
+    repos: ['branches-behind'],
+    themes: ['dark'],
+    clipTo: '.context-menu',
+    clipPad: 80,
+    drive: async (page) => {
+      await page.locator('.tool-btn.split .split-arrow').first().click()
+      await page.waitForSelector('.context-menu')
+      // Off the menu, so no row is highlighted and the arrow's hover tint is gone.
+      await page.mouse.move(1400, 880)
+      await page.waitForTimeout(400)
+    }
+  },
+  {
     // The same menu on a remote branch — rename drops out and delete targets
     // the remote after its own confirmation.
     out: 'branch-dropdown-remote-context-menu',

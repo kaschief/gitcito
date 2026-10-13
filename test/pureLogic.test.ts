@@ -7174,3 +7174,40 @@ describe('bounded number drafts', () => {
     expect(readDraft('123456', { min: 0 })).toEqual({ status: 'valid', value: 123456 })
   })
 })
+
+// ─── Other branches behind (src/renderer/src/lib/pullOthers.ts) ─────────────
+
+import { pullableOthers } from '../src/renderer/src/lib/pullOthers'
+import type { BranchInfo } from '../src/shared/types'
+
+describe('pullableOthers', () => {
+  const b = (
+    name: string,
+    behind: number,
+    ahead = 0,
+    opts: { isCurrent?: boolean; upstream?: string | null } = {}
+  ): BranchInfo => ({
+    name,
+    sha: name,
+    upstream: opts.upstream === undefined ? `origin/${name}` : opts.upstream,
+    ahead,
+    behind,
+    isCurrent: opts.isCurrent ?? false,
+    mergedIntoCurrent: false
+  })
+
+  it('lists other branches that can fast-forward, most behind first', () => {
+    const out = pullableOthers([
+      b('main', 4, 0, { isCurrent: true }),
+      b('a', 1),
+      b('c', 3),
+      b('b', 3),
+      b('up-to-date', 0)
+    ])
+    expect(out.map((x) => x.name)).toEqual(['b', 'c', 'a'])
+  })
+
+  it('leaves out diverged branches and branches without an upstream', () => {
+    expect(pullableOthers([b('diverged', 2, 1), b('local', 2, 0, { upstream: null })])).toEqual([])
+  })
+})

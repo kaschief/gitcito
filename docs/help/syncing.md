@@ -3,7 +3,7 @@ title: Fetching, pulling & pushing
 category: Sync & many repos
 order: 50
 summary: Staying in step, with guards on the operations that bite.
-keywords: fetch pull push force auto-fetch prune remotes upstream protected branch multiple remotes fork mirror push tags all no remote add remote
+keywords: fetch pull push pull all branches behind dot other branches force auto-fetch prune remotes upstream protected branch multiple remotes fork mirror push tags all no remote add remote
 ---
 
 # Fetching, pulling & pushing
@@ -94,6 +94,30 @@ than the checked-out one.
 |---|---|
 | **Pull `<branch>`** | Fast-forwards the local ref from its upstream, without a checkout. The working tree is not touched. **Undoable with ⌘Z** — the undo puts the branch back where it was. |
 | **Push `<branch>`** | An ordinary push of that branch, with the same protected-branch and [secret guards](security.md) as the toolbar button. |
+
+### From the Pull button
+
+You should not have to go hunting in the sidebar to learn that `release/2.4`
+fell behind. When other local branches are behind their upstream, a small dot
+lights up on the **Pull** button's arrow, and its tooltip says which branch, or
+how many. The count pill on the button still means the branch you are on, so the
+two never blur: the pill is what the button pulls, the dot is what the menu
+offers.
+
+The arrow's menu then gains an **Other branches behind** section: one **Pull
+`<branch>`** row per branch with its ↓N count, most behind first, and **Pull all
+N branches** at the end. Past five branches the rows fold into a single **Pull a
+branch** row with a side list, so the section stays three rows long however many
+branches fell behind.
+Pull all is one action with one undo, which puts every branch back where it was.
+
+![The Pull button's dot and the branches it offers to catch up](../screenshots/pull-branches-behind.webp)
+
+The dot only knows what the last fetch told it, so a branch behind on the
+server but not yet fetched does not light it. Diverged branches are left out
+of the list, because a pull without a checkout would refuse them anyway. If one
+branch in a Pull all is refused, the ones before it stay pulled and the rest
+are not attempted.
 
 Pull is greyed out for a branch that tracks nothing — there is nowhere to pull
 from. On the branch you *are* on, both fall back to the normal pull, which

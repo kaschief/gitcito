@@ -25,6 +25,8 @@ export interface MenuItem {
   onClick?: () => void
   /** Nested items — renders a flyout submenu on hover instead of a click action. */
   submenu?: MenuItem[]
+  /** Trailing ↓N count, drawn as the sidebar's red behind badge. */
+  behind?: number
 }
 
 export interface ContextMenuState {

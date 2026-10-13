@@ -62,6 +62,7 @@ import { useSettingsStore } from '../stores/settings'
 import { repoChatAvailable } from '../lib/repoChatUI'
 import { useT, interp } from '../i18n'
 import { timeAgo, isStale } from '../lib/timeAgo'
+import { INLINE_PULL_LIMIT, pullableOthers } from '../lib/pullOthers'
 import { BranchStatusPicker } from './BranchStatusPicker'
 import { RepoStatusPicker } from './RepoStatusPicker'
 
@@ -86,6 +87,8 @@ type BarItem =
       /** Split-button dropdown; the overflow menu nests the same entries. */
       menu?: () => MenuItem[]
       badge?: number
+      /** A dot on the split arrow: the menu holds something worth opening. */
+      dot?: boolean
       /** Fetch alone hangs its age label under the button. */
       age?: boolean
     }
@@ -114,6 +117,7 @@ export function Toolbar({ repo }: { repo: RepoData }): React.JSX.Element {
   const language = useSettingsStore((s) => s.settings.language ?? 'en')
   const path = repo.path
   const current = repo.branches.locals.find((b) => b.isCurrent)
+  const others = pullableOthers(repo.branches.locals)
 
   // Re-render every 15s so the relative "last fetched / refreshed" labels stay current.
   const [, setTick] = useState(0)
@@ -140,8 +144,44 @@ export function Toolbar({ repo }: { repo: RepoData }): React.JSX.Element {
   const pullItems = (): MenuItem[] => [
     { label: t('pull.default'), onClick: () => void repoActions.pull(path, 'default') },
     { label: t('pull.ffOnly'), onClick: () => void repoActions.pull(path, 'ff-only') },
-    { label: t('pull.rebase'), onClick: () => void repoActions.pull(path, 'rebase') }
+    { label: t('pull.rebase'), onClick: () => void repoActions.pull(path, 'rebase') },
+    ...othersItems()
   ]
+
+  /** Branches you are not on that a fast-forward would catch up — listed, or folded past a handful. */
+  const othersItems = (): MenuItem[] => {
+    if (others.length === 0) return []
+    const names = others.map((b) => b.name)
+    const rows: MenuItem[] = others.map((b) => ({
+      label: interp(t('branch.pullNamed'), { branch: b.name }),
+      behind: b.behind,
+      onClick: () => void repoActions.pullBranch(path, b.name)
+    }))
+    return [
+      { separator: true },
+      { label: t('pull.othersBehind'), disabled: true },
+      ...(others.length > INLINE_PULL_LIMIT
+        ? [
+            {
+              label: t('pull.pickBranch'),
+              // In a flyout titled "Pull a branch", the verb on every row is noise.
+              submenu: rows.map((r, i) => ({ ...r, label: names[i] }))
+            }
+          ]
+        : rows),
+      ...(others.length > 1
+        ? [
+            {
+              label:
+                others.length === 2
+                  ? t('pull.bothBranches')
+                  : interp(t('pull.allBranches'), { n: String(others.length) }),
+              onClick: () => void repoActions.pullBranches(path, names)
+            }
+          ]
+        : [])
+    ]
+  }
 
   const pushItems = (): MenuItem[] => [
     { label: t('toolbar.push'), onClick: () => void repoActions.push(path) },
@@ -339,6 +379,13 @@ export function Toolbar({ repo }: { repo: RepoData }): React.JSX.Element {
     ]
   }
 
+  // The count pill keeps meaning the checked-out branch; the tooltip names the rest.
+  const pullTitle =
+    others.length === 0
+      ? t('toolbar.pull')
+      : others.length === 1
+        ? interp(t('pull.othersHintOne'), { branch: others[0].name })
+        : interp(t('pull.othersHintMany'), { n: String(others.length) })
   const items: BarItem[] = [
     {
       id: 'undo',
@@ -372,13 +419,14 @@ export function Toolbar({ repo }: { repo: RepoData }): React.JSX.Element {
     {
       id: 'pull',
       label: t('toolbar.pull'),
-      title: t('toolbar.pull'),
+      title: pullTitle,
       icon: busyOp === 'pull' ? <Loader2 size={17} className="spin" /> : <ArrowDownToLine size={17} />,
       menuIcon: <ArrowDownToLine size={15} />,
       disabled: inflight,
       run: () => void repoActions.pull(path, 'default'),
       menu: pullItems,
-      badge: current?.behind
+      badge: current?.behind,
+      dot: others.length > 0
     },
     {
       id: 'push',
@@ -539,6 +587,7 @@ export function Toolbar({ repo }: { repo: RepoData }): React.JSX.Element {
               : { 'aria-hidden': true })}
           >
             <ChevronDown size={13} />
+            {item.dot && <span className="pull-others-dot" aria-hidden="true" />}
           </span>
         )}
       </button>

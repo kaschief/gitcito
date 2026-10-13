@@ -48,6 +48,7 @@ function MenuRow({ item, close }: { item: MenuItem; close: () => void }): React.
       >
         {item.icon && <span className="menu-item-icon">{item.icon}</span>}
         <span className="menu-item-label">{item.label}</span>
+        {item.behind ? <span className="badge behind">↓{item.behind}</span> : null}
       </button>
     )
   }

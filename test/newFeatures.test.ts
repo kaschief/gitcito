@@ -1474,3 +1474,18 @@ describe('acting on a stack you are not standing on (stacked-branches playground
     expect(info.branches[0].parent).toBe('main')
   })
 })
+
+import { pullableOthers } from '../src/renderer/src/lib/pullOthers'
+
+describe('other branches behind (branches-behind playground)', () => {
+  it('offers the branches a fast-forward can catch up, and not the current, diverged or untracked ones', async () => {
+    const { locals } = await gitService.branches(repoPath('branches-behind'))
+    expect(locals.find((b) => b.isCurrent)?.behind).toBe(1)
+    const others = pullableOthers(locals)
+    expect(others.map((b) => [b.name, b.behind])).toEqual([
+      ['feature/search', 3],
+      ['release/2.4', 2],
+      ['docs/install', 1]
+    ])
+  })
+})
