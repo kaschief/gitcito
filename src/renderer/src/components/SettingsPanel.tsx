@@ -106,6 +106,7 @@ import { AIAccountsEditor } from './AIAccounts'
 import { LanguagePicker } from './LanguagePicker'
 import { NumberField } from './NumberField'
 import { ShortcutEditor } from './CheatsheetModal'
+import { useScrollList } from './useScrollList'
 import madLogo from '../assets/mad-high.png'
 
 type SettingsPage =
@@ -1281,6 +1282,7 @@ function GraphStyleTab(): React.JSX.Element {
     update((s) => ({ ...s, graphStyle: { ...(s.graphStyle ?? defaultGraphStyle()), ...patch } }))
 
   const selectPalette = (id: string): void => setStyle({ paletteId: id })
+  const paletteList = useScrollList<HTMLDivElement>('.theme-card.selected')
 
   const openCreate = (): void => {
     setDraft(toSlots(current.colors))
@@ -1351,7 +1353,7 @@ function GraphStyleTab(): React.JSX.Element {
               )}
             </div>
           </div>
-          <div className="palette-grid">
+          <div ref={paletteList} className="palette-grid settings-scroll-list">
             {palettes.map((p) => (
               <div
                 key={p.id}
@@ -1608,6 +1610,8 @@ function ThemesPage({ initialTab }: { initialTab?: 'theme' | 'graph' } = {}): Re
 
   const setMode = (m: ThemeMode): void => update((s) => ({ ...s, themeMode: m }))
   const selectApp = (id: string): void => update((s) => ({ ...s, appThemeId: id }))
+  const appThemeList = useScrollList<HTMLDivElement>('.theme-card.selected')
+  const codeThemeList = useScrollList<HTMLDivElement>('.theme-card.selected')
   const selectCode = (id: string): void => update((s) => ({ ...s, codeThemeId: id }))
 
   const MODES: { id: ThemeMode; key: TranslationKey; icon: React.ReactNode }[] = [
@@ -1724,7 +1728,7 @@ function ThemesPage({ initialTab }: { initialTab?: 'theme' | 'graph' } = {}): Re
           )}
         </div>
       </div>
-      <div className="theme-grid">
+      <div ref={appThemeList} className="theme-grid settings-scroll-list">
         {appThemes.map((th) => (
           <div
             key={th.id}
@@ -1838,7 +1842,7 @@ function ThemesPage({ initialTab }: { initialTab?: 'theme' | 'graph' } = {}): Re
           </div>
         </div>
       </div>
-      <div className="theme-grid">
+      <div ref={codeThemeList} className="theme-grid settings-scroll-list">
         {codeThemes.map((th) => (
           <div
             key={th.id}

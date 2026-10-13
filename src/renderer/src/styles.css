@@ -9216,6 +9216,25 @@ input.is-invalid {
   margin-top: 8px;
 }
 
+/* Long Settings choice lists (app and code themes, graph palettes) grow with every custom one, so
+   each scrolls in its own box: two rows and a peek of the third, and the page stays short. Padding
+   keeps the selection ring unclipped; position: relative makes the box the offsetParent that
+   useScrollList centres the chosen card by. max-content rows: the cards clip their overflow, so
+   auto rows would shrink to fit the max-height instead of letting the box scroll. */
+.settings-scroll-list {
+  max-height: 236px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 4px;
+  position: relative;
+  grid-auto-rows: max-content;
+}
+/* The fade covers the whole peeking row rather than a thin edge: the cut row frosts away and reads
+   as "scroll for more". It lifts once the list is scrolled to the end. */
+.settings-scroll-list[data-more-below='true'] {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 64px), transparent 100%);
+}
+
 .theme-card {
   position: relative;
   border: 1.5px solid var(--border);

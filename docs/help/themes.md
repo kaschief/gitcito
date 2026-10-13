@@ -21,6 +21,14 @@ Midnight, Contrast and Daltonic — each with a light and a dark variant.
 
 ![Theme settings](../screenshots/settings-themes.webp)
 
+In **Settings → Themes** the App Theme and Code Theme lists, and the graph
+palettes, each scroll inside their own box: two rows at a time, with the
+cut-off row fading out until you reach the end. Each list opens on your current
+choice, so a growing collection of custom themes does not push the rest of the
+page out of reach. A list short enough to fit shows in full, with no fade.
+
+![The App Theme and Code Theme lists, each in its own scrolling box](../screenshots/settings-theme-lists.webp)
+
 ## Layout
 
 Sidebar on the left or the right, resizable panels everywhere, a collapsible

@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { parseRemoteUrl } from '../src/main/hosting'
 import { readDraft, settleDraft } from '../src/renderer/src/lib/boundedNumber'
+import { centeredScrollTop, hasMoreBelow } from '../src/renderer/src/lib/scrollList'
 
 import { treeStatusOf } from '../src/renderer/src/lib/treeStatus'
 import { timeAgo, isStale, STALE_AFTER_MS } from '../src/renderer/src/lib/timeAgo'
@@ -7172,5 +7173,19 @@ describe('bounded number drafts', () => {
 
   it('treats a missing max as open-ended', () => {
     expect(readDraft('123456', { min: 0 })).toEqual({ status: 'valid', value: 123456 })
+  })
+})
+
+describe('scrolling Settings lists', () => {
+  it('fades only while content is left below, ignoring a sub-pixel remainder at the bottom', () => {
+    expect(hasMoreBelow(500, 236, 0)).toBe(true)
+    expect(hasMoreBelow(500, 236, 264)).toBe(false)
+    expect(hasMoreBelow(500, 236, 263.5)).toBe(false)
+    expect(hasMoreBelow(200, 236, 0)).toBe(false)
+  })
+
+  it('opens on the chosen card, centred, and never scrolls above the top', () => {
+    expect(centeredScrollTop(300, 80, 236)).toBe(222)
+    expect(centeredScrollTop(4, 80, 236)).toBe(0)
   })
 })

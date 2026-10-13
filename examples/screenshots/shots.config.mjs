@@ -568,6 +568,28 @@ export const shots = [
     }
   },
   {
+    // The App Theme and Code Theme lists each scroll in their own box, the cut-off row fading out,
+    // so the Appearance page stays short. Scrolled so both lists are in view together.
+    out: 'settings-theme-lists',
+    repos: ['octopus-merge'],
+    themes: ['light'],
+    drive: async (page) => {
+      await page.evaluate(() => window.__shot.ui.getState().openModal({ kind: 'settings', page: 'themes' }))
+      await page.waitForSelector('.theme-grid')
+      await page.waitForTimeout(300)
+      await page.evaluate(() => {
+        const list = document.querySelector('.theme-grid')
+        let box = list?.parentElement
+        while (box && !/(auto|scroll)/.test(getComputedStyle(box).overflowY)) box = box.parentElement
+        const heading = list?.previousElementSibling
+        if (box && heading) {
+          box.scrollTop += heading.getBoundingClientRect().top - box.getBoundingClientRect().top - 12
+        }
+      })
+      await page.waitForTimeout(300)
+    }
+  },
+  {
     // Settings → Themes → Graph tab: lane palette, line corners, density,
     // thickness, with the live mini-graph preview.
     out: 'settings-graph',
