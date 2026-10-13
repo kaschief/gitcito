@@ -1034,6 +1034,34 @@ export const shots = [
     }
   },
   {
+    // Empty hosting lists in the sidebar: each says plainly that there are
+    // none, instead of "…loaded", which read as if some had failed to load.
+    out: 'sidebar-counts',
+    repos: ['pr-ready-branch'],
+    themes: ['light'],
+    prepare: async ({ repoPaths, run }) => {
+      const repo = repoPaths['pr-ready-branch']
+      await run('git', ['-C', repo, 'remote', 'set-url', 'origin', 'https://github.com/you/pr-ready-branch.git'])
+      await run('git', ['-C', repo, 'remote', 'remove', 'upstream'], { allowFail: true })
+    },
+    drive: async (page, repoPaths) => {
+      const repo = repoPaths['pr-ready-branch']
+      // Let the load's own refreshes settle before emptying the lists.
+      await page.waitForTimeout(1500)
+      await page.evaluate((p) => {
+        window.__shot.repo.getState().patch(p, { prs: [], upstreamPrs: [], issues: [], releases: [] })
+      }, repo)
+      for (const title of ['PULL REQUESTS', 'ISSUES', 'RELEASES']) {
+        const section = page.locator('.sb-header', { hasText: title }).first()
+        if (await section.count()) {
+          await section.click()
+          await page.waitForTimeout(300)
+        }
+      }
+      await page.waitForTimeout(400)
+    }
+  },
+  {
     // The submit screen, on its plan step: what a submit is about to open, and
     // against what. The result step needs a live host, so this is the half that
     // can be photographed deterministically.

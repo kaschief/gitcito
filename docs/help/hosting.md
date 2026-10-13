@@ -19,6 +19,16 @@ GitHub — reviewers, labels and assignees applied on create.
 Works on **GitHub, GitLab, Bitbucket and Azure DevOps**. Open PRs/MRs for all
 four are listed in the sidebar.
 
+An empty list says so plainly — *No open pull requests*, *No open issues*, *No
+milestones*, *No releases* — rather than "…loaded", which read as if some had
+failed to load. The sidebar cannot tell an empty list from one it could not
+fetch: when the background refresh fails (offline, an expired token, a GitLab
+remote without a token, a private repository the token cannot see), the list
+stays empty and says the same thing. Press the section's Refresh button to see
+the error instead.
+
+![Empty pull request, issue and release lists in the sidebar](../screenshots/sidebar-counts.webp)
+
 Start one from branch-compare, the graph, the `+` in the PR panel, or from an
 issue (which fills in `Closes #N`).
 
