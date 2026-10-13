@@ -2125,6 +2125,26 @@ export const shots = [
     }
   },
   {
+    // The Local list close up: plain branches (develop, main) sit above the
+    // prefix folders instead of being sorted in among them.
+    out: 'sidebar-branches',
+    repos: ['branch-grouping'],
+    themes: ['light'],
+    clipTo: '.sb-panes > .sb-section.is-open',
+    clipPad: 0,
+    drive: async (page, repoPaths) => {
+      const repo = repoPaths['branch-grouping']
+      await page.evaluate((p) => window.__shot.repo.getState().select(p, { type: 'wip' }), repo)
+      await page.waitForTimeout(900)
+      // Fold the two big folders so the whole list, release/ included, fits.
+      for (const name of ['bugfix', 'feature']) {
+        await page.locator('.sb-section.sb-folder > .sb-header', { hasText: name }).first().click()
+        await page.waitForTimeout(250)
+      }
+      await page.waitForTimeout(400)
+    }
+  },
+  {
     // Status badges on the project tree: which files are modified, added or
     // ignored, without leaving the file browser.
     out: 'tree-badges',

@@ -46,6 +46,14 @@ tree. A run of single-child folders collapses into one header
 (`dependabot/npm_and_yarn`). Folder headers use a folder mark; the ref itself
 uses a branch, remote or tag mark.
 
+In the Local and Remotes lists, branches without a prefix come first and
+folders follow, each group still alphabetical. `develop` and `main` stay
+together at the top instead of being scattered between `bugfix/`, `feature/`
+and `release/`, which also read as if those folders belonged to the branch
+next to them. Tags keep plain alphabetical order.
+
+![The Local list: develop and main on top, the prefix folders below](../screenshots/sidebar-branches.webp)
+
 Right-click a folder header to act on the whole group: *Delete all branches
 under `feature` (4 branches)* removes everything inside after one confirmation
 that lists exactly which branches go — the branch you are on is excluded. The

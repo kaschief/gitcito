@@ -36,6 +36,7 @@ import {
   collapseFolderRun,
   collectLeaves,
   leafCount,
+  refsBeforeFolders,
   shouldCollapsePrefix
 } from '../src/renderer/src/lib/prefixTree'
 import {
@@ -6626,6 +6627,12 @@ describe('prefixTree', () => {
     expect(shouldCollapsePrefix(feat)).toBe(false)
     expect(feat.item).toBe('feat')
     expect([...feat.children.keys()]).toEqual(['login'])
+  })
+
+  it('lists plain refs above folders, keeping each group in order', () => {
+    const root = buildPrefixTree(['fix/a', 'fix/b', 'develop', 'feat', 'feat/x', 'main'], (s) => s)
+    expect(refsBeforeFolders(root).map((n) => n.seg)).toEqual(['develop', 'main', 'fix', 'feat'])
+    expect(refsBeforeFolders(undefined)).toEqual([])
   })
 })
 
