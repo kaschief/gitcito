@@ -788,6 +788,23 @@ export const shots = [
     }
   },
   {
+    // Discard everything, asking over a mixed tree that includes a staged new
+    // file — the confirm now says new files go too, and that Undo brings it back.
+    out: 'discard-all-undo',
+    repos: ['change-summary'],
+    themes: ['light'],
+    prepare: async ({ repoPaths, run }) => {
+      await run('git', ['-C', repoPaths['change-summary'], 'add', 'src/http/cache.js'])
+    },
+    drive: async (page, repoPaths) => {
+      const repo = repoPaths['change-summary']
+      await page.evaluate((p) => window.__shot.repo.getState().select(p, { type: 'wip' }), repo)
+      await page.waitForSelector('.composer .discard-btn:not([disabled])', { timeout: 10000 })
+      await page.click('.composer .discard-btn')
+      await page.waitForTimeout(500)
+    }
+  },
+  {
     // Commit composer prefilled from commit.template (.gitmessage).
     out: 'commit-template',
     repos: ['commit-template'],
@@ -1296,6 +1313,22 @@ export const shots = [
       // By label, not by position: the first toggle is Whitespace, and this shot
       // spent a while photographing a unified diff because of it.
       await page.click('.diff-toggles button:has-text("Split")').catch(() => {})
+      await page.waitForTimeout(500)
+    }
+  },
+  {
+    // Moved code: parseConfig cut from the top of utils.ts and pasted at the
+    // bottom, tinted blue at both ends with arrows pointing at each other,
+    // beside an ordinary one-line edit that stays red and green.
+    out: 'moved-code',
+    repos: ['moved-code'],
+    themes: ['dark'],
+    drive: async (page, repoPaths) => {
+      const repo = repoPaths['moved-code']
+      await page.evaluate((p) => {
+        window.__shot.ui.getState().setFileView({ repoPath: p, file: 'utils.ts', source: { type: 'wip', staged: false, untracked: false }, mode: 'diff' })
+      }, repo)
+      await page.locator('.diff-line.moved').first().waitFor()
       await page.waitForTimeout(500)
     }
   },
@@ -1836,6 +1869,34 @@ export const shots = [
       await page.waitForTimeout(800)
       // Hover a changed line so its stage-this-line affordance is in the frame.
       await page.hover('.diff-line.add').catch(() => {})
+      await page.waitForTimeout(400)
+    }
+  },
+  {
+    // Hunk and line actions — two lines selected (the bar offers Stage and
+    // Discard for just those), Stage hunk + Discard hunk on the hunk bar, and
+    // the right-click menu on a selected line.
+    out: 'hunk-line-actions',
+    repos: ['line-staging'],
+    themes: ['light'],
+    drive: async (page, repoPaths) => {
+      const repo = repoPaths['line-staging']
+      await page.evaluate((p) => {
+        const s = window.__shot
+        s.repo.getState().select(p, { type: 'wip' })
+        s.ui.getState().setFileView({
+          repoPath: p,
+          file: 'config.js',
+          source: { type: 'wip', staged: false, untracked: false },
+          mode: 'diff'
+        })
+      }, repo)
+      await page.locator('.diff-hunk-actions').first().waitFor()
+      await page.waitForTimeout(400)
+      await page.locator('.diff-line.add', { hasText: 'debug' }).click()
+      await page.locator('.diff-line.add', { hasText: 'tls' }).click()
+      await page.locator('.diff-select-bar').waitFor()
+      await page.locator('.diff-line.add', { hasText: 'tls' }).click({ button: 'right' })
       await page.waitForTimeout(400)
     }
   },

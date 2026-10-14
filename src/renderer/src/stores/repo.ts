@@ -51,7 +51,7 @@ import { overwrittenLocalChanges, readableGitError, summarizePaths } from '../li
 import { parseRouteConflict } from '../lib/stackOrder'
 import { timeAgo } from '../lib/timeAgo'
 import { splitCommitMessage } from '../lib/commitMenuCapabilities'
-import { t, interp } from '../i18n'
+import { t, interp, type TranslationKey } from '../i18n'
 
 /** Repos already warned this session about pushing tracked secrets (don't nag). */
 const secretPushWarned = new Set<string>()
@@ -1287,6 +1287,24 @@ function isNoOpConflictError(path: string): (message: string) => boolean {
   }
 }
 
+/**
+ * The five things a hunk or line selection can be sent to, and how `git apply`
+ * carries each out. Undo applies the same patch the opposite way to the same
+ * target, which is exact: a patch that applied cleanly one way applies cleanly
+ * back. Keys, not strings, so a language switch is picked up (see i18n rule 4).
+ */
+export type HunkActionKind = 'stage' | 'unstage' | 'discard' | 'revert' | 'apply'
+const HUNK_ACTIONS = {
+  stage: { target: 'index', reverse: false, doneKey: 'act.hunkStaged', undoKey: 'undoLabel.hunkStage' },
+  unstage: { target: 'index', reverse: true, doneKey: 'act.hunkUnstaged', undoKey: 'undoLabel.hunkUnstage' },
+  discard: { target: 'worktree', reverse: true, doneKey: 'act.hunkDiscarded', undoKey: 'undoLabel.hunkDiscard' },
+  revert: { target: 'worktree', reverse: true, doneKey: 'act.hunkReverted', undoKey: 'undoLabel.hunkRevert' },
+  apply: { target: 'worktree', reverse: false, doneKey: 'act.hunkApplied', undoKey: 'undoLabel.hunkApply' }
+} as const satisfies Record<
+  HunkActionKind,
+  { target: 'index' | 'worktree'; reverse: boolean; doneKey: TranslationKey; undoKey: TranslationKey }
+>
+
 export const repoActions = {
   // Refreshes every slice on purpose: moving HEAD rewrites the `HEAD -> …`
   // decoration the graph reads off each commit, plus the per-directory tree
@@ -2287,6 +2305,64 @@ export const repoActions = {
     )
   },
 
+  /**
+   * Send a hunk or line patch where `kind` says. Discard asks first, since it
+   * throws away work that exists nowhere else; the undo entry (and the WIP
+   * snapshot the main process takes) are the second line of defence. `onStart`
+   * fires once the patch is really on its way (after the confirm, for discard).
+   * Resolves false when git refused the patch.
+   */
+  applyHunk: (
+    path: string,
+    patch: string,
+    kind: HunkActionKind,
+    ignoreWhitespace = false,
+    onStart?: () => void
+  ): Promise<boolean> => {
+    const op = HUNK_ACTIONS[kind]
+    // A working-tree action may have needed the three-way merge; when that left
+    // conflict markers, say so after the success toast rather than let it pass
+    // as a clean change.
+    let conflicts = 0
+    const send = async (reverse: boolean): Promise<void> => {
+      conflicts = (await gitApi.applyHunkPatch(path, patch, op.target, reverse, ignoreWhitespace)).conflicts
+    }
+    const perform = (): Promise<boolean> => {
+      onStart?.()
+      return useRepoStore
+        .getState()
+        .run(
+          path,
+          t(op.doneKey),
+          () => send(op.reverse),
+          { label: t(op.undoKey), undo: () => send(!op.reverse), redo: () => send(op.reverse) },
+          null,
+          (msg) => {
+            if (!/patch does not apply|patch failed/i.test(msg)) return false
+            toast('error', t('hunk.doesNotApply'), { repoPath: path })
+            return true
+          },
+          ['status', 'treeStatus']
+        )
+        .then((ok) => {
+          if (ok && conflicts > 0) toast('info', t('hunk.mergedWithConflicts'), { repoPath: path })
+          return ok
+        })
+    }
+    if (kind !== 'discard') return perform()
+    return new Promise((resolve) => {
+      useUIStore.getState().openModal({
+        kind: 'confirm',
+        danger: true,
+        title: t('hunk.discardConfirmTitle'),
+        message: t('hunk.discardConfirmMessage'),
+        confirmLabel: t('hunk.discardConfirmOk'),
+        // Cancelling leaves it pending: there is nothing to follow up on.
+        onConfirm: () => void perform().then(resolve)
+      })
+    })
+  },
+
   stashDrop: (path: string, index = 0) =>
     useRepoStore.getState().run(path, t('act.droppedStash'), () => gitApi.stashDrop(path, index), undefined, null, undefined, ['stashes']),
 
@@ -2468,8 +2544,60 @@ export const repoActions = {
   unstage: (path: string, files: string[]) =>
     useRepoStore.getState().run(path, interp(t('act.unstaged'), { n: files.length }), () => gitApi.unstage(path, files), undefined, null, undefined, ['status', 'treeStatus']),
   unstageAll: (path: string) => useRepoStore.getState().run(path, t('act.unstagedAll'), () => gitApi.unstageAll(path), undefined, null, undefined, ['status', 'treeStatus']),
-  discard: (path: string, files: string[], untracked: boolean) =>
-    useRepoStore.getState().run(path, interp(t('act.discarded'), { n: files.length }), () => gitApi.discard(path, files, untracked), undefined, null, undefined, ['status', 'treeStatus']),
+  /**
+   * Discard files (one, a folder's worth, or with `all` every change, staged
+   * and unstaged) after a confirm. What is staged and what is on disk is saved
+   * first, so Undo puts the discarded paths back exactly, staged parts and new
+   * files included. The confirm says whether Undo can: it cannot while a merge
+   * still has conflicts, because the index cannot be saved then.
+   */
+  discardChanges: async (
+    path: string,
+    files: { path: string; untracked?: boolean }[],
+    opts: { all: true } | { all?: false; label: string }
+  ): Promise<void> => {
+    // A file both staged and changed again is listed twice; discard it once.
+    const unique = [...new Map(files.map((f) => [f.path, f])).values()]
+    const paths = unique.map((f) => f.path)
+    if (paths.length === 0) return
+    const initial = await gitApi.captureWork(path).catch(() => null)
+    let saved = initial
+    const perform = async (): Promise<void> => {
+      // The dialog may sit open while files keep changing, and redo runs later
+      // still: save again right before discarding so Undo restores what was
+      // actually thrown away.
+      if (initial) saved = (await gitApi.captureWork(path).catch(() => null)) ?? saved
+      // Unstaging first turns staged-new files into files git never had;
+      // `discard` removes those from disk as well. (It fails before the first
+      // commit, where there is no HEAD to reset to; discard what it can anyway.)
+      if (opts.all) await gitApi.unstageAll(path).catch(() => undefined)
+      const untracked = unique.filter((f) => f.untracked).map((f) => f.path)
+      const tracked = unique.filter((f) => !f.untracked).map((f) => f.path)
+      if (tracked.length) await gitApi.discard(path, tracked, false)
+      if (untracked.length) await gitApi.discard(path, untracked, true)
+    }
+    const undoEntry: UndoEntry | undefined = initial
+      ? {
+          label: opts.all ? t('undoLabel.discardAll') : interp(t('undoLabel.discard'), { what: opts.label }),
+          undo: () => gitApi.restoreWork(path, saved ?? initial, paths),
+          redo: perform
+        }
+      : undefined
+    const message = opts.all
+      ? t(initial ? 'composer.discardAllMsgUndoable' : 'composer.discardAllMsg')
+      : interp(t(initial ? 'composer.discardMsgUndoable' : 'composer.discardMsg'), { file: opts.label })
+    useUIStore.getState().openModal({
+      kind: 'confirm',
+      title: t(opts.all ? 'composer.discardAllTitle' : 'composer.discardChanges'),
+      message,
+      danger: true,
+      confirmLabel: t(opts.all ? 'composer.discardAllConfirm' : 'composer.discardConfirm'),
+      onConfirm: () =>
+        void useRepoStore
+          .getState()
+          .run(path, interp(t('act.discarded'), { n: paths.length }), perform, undoEntry, null, undefined, ['status', 'treeStatus'])
+    })
+  },
 
   addToGitignore: (path: string, patterns: string[], label?: string) =>
     useRepoStore.getState().run(path, interp(t('act.addedToGitignore'), { what: label ?? interp(t('act.nEntries'), { n: patterns.length }) }), async () => {

@@ -120,6 +120,7 @@ import type {
   CosmosCommit,
   ChangelogResult,
   SnapshotInfo,
+  SavedWork,
   SnapshotKind,
   TeammateRadarResult,
   CommitEditInfo,
@@ -286,6 +287,8 @@ export const gitApi = {
     call<void>('stashApplyFiles', path, sha, tracked, untracked),
   restoreFromCommit: (path: string, hash: string, paths: string[]) =>
     call<void>('restoreFromCommit', path, hash, paths),
+  captureWork: (path: string) => call<SavedWork | null>('captureWork', path),
+  restoreWork: (path: string, saved: SavedWork, paths: string[]) => call<void>('restoreWork', path, saved, paths),
 
   stage: (path: string, files: string[]) => call<void>('stage', path, files),
   applyRepoFileActions: (path: string, actions: PreparedRepoChatFileAction[]) =>
@@ -507,6 +510,7 @@ export const gitApi = {
       regex?: boolean
       max?: number
       maxPerFile?: number
+      searchId?: string
     }
   ) => call<CodeSearchHit[]>('searchFileMatches', path, files, query, opts),
   searchCommitMatches: (
@@ -599,6 +603,13 @@ export const gitApi = {
   runInteractiveRebase: (path: string, base: string, steps: RebaseStep[]) =>
     call<void>('runInteractiveRebase', path, base, steps),
   stagePatch: (path: string, patch: string) => call<void>('stagePatch', path, patch),
+  applyHunkPatch: (
+    path: string,
+    patch: string,
+    target: 'index' | 'worktree',
+    reverse: boolean,
+    ignoreWhitespace?: boolean
+  ) => call<{ conflicts: number }>('applyHunkPatch', path, patch, target, reverse, ignoreWhitespace),
   compareBranches: (path: string, a: string, b: string) =>
     call<BranchCompareResult>('compareBranches', path, a, b),
   mergePreview: (path: string, base: string, refs: string[]) =>
