@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react'
-import { Plus, FolderGit2, X, Minus, Square, Settings, Sparkles, LifeBuoy, FileText, Bell, BarChart3, BookOpen, ScrollText, CircleDot, Flag, Tag, Download, ArrowDownToLine, KeyRound, LayoutGrid, Folder, FolderOpen, FolderPlus, FolderTree, Trash2, Scale, Wrench } from 'lucide-react'
+import { Plus, FolderGit2, X, Minus, Square, Settings, Sparkles, LifeBuoy, FileText, Bell, BarChart3, BookOpen, ScrollText, CircleDot, Flag, Tag, Download, ArrowDownToLine, KeyRound, LayoutGrid, Folder, FolderOpen, FolderPlus, FolderTree, Trash2, Scale, Wrench, Ungroup } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { colorMenuItems } from './colorMenu'
 import { useSettingsStore } from '../stores/settings'
 import { useUIStore, type MenuItem } from '../stores/ui'
 import { useRepoStore, repoActions } from '../stores/repo'
@@ -17,11 +18,17 @@ import {
 } from '../lib/repoFolders'
 import { ProfileSwitcher } from './ProfileSwitcher'
 import { WorkspaceSwitcher } from './WorkspaceSwitcher'
+import { RepoTabLabel } from './RepoTabLabel'
 import { tabLabel, pageTabLabel } from '../lib/tabLabel'
 import { pagesForRepo } from '../lib/tabPages'
 import { repoCloseStatus, tabCloseStatus, type TabStatus } from '../lib/tabClose'
 import { repoDisplayName } from '../lib/repoAlias'
-import { confirmRemoveRepoFromGroup, repositoryMenuItems, requestCloseTab } from '../lib/repositoryMenuItems'
+import {
+  confirmRemoveRepoFromGroup,
+  repositoryMenuItems,
+  requestCloseTab,
+  requestCloseOtherTabs
+} from '../lib/repositoryMenuItems'
 import { useT, interp } from '../i18n'
 
 export { requestCloseTab }
@@ -98,7 +105,7 @@ export function TitleBar(): React.JSX.Element {
   const {
     settings, setGroupActiveRepo, closeTab, setActiveTab, renameTab, setRepoPage, closeRepoPage,
     setTabColor, toggleTabCollapsed,
-    reorderTabs, moveTabIntoGroup, ejectRepoFromGroup,
+    reorderTabs, moveTabIntoGroup, groupRepoTab, ungroupTab, ejectRepoFromGroup,
     moveRepoBetweenGroups, reorderReposInGroup, moveTabToWorkspace,
     createFolder, renameFolder, setFolderColor, removeFolder,
     toggleFolderCollapsed, moveRepoToFolder, moveFolderToFolder
@@ -582,6 +589,30 @@ export function TitleBar(): React.JSX.Element {
     }
   }
 
+  const promptNewGroup = (tabId: string): void =>
+    openModal({ kind: 'new-group', onCreate: (name, color) => groupRepoTab(tabId, name, color) })
+
+  // With groups open, a submenu listing them plus "New group…"; with none, the
+  // "New group…" entry on its own — a submenu of one is a wasted hover.
+  const addToGroupItem = (tabId: string): MenuItem => {
+    const groups = settings.tabs.filter((x): x is GroupTab => x.kind === 'group')
+    const create: MenuItem = {
+      label: t('titlebar.newGroupMenu'),
+      icon: <FolderPlus size={15} />,
+      onClick: () => promptNewGroup(tabId)
+    }
+    if (groups.length === 0) return create
+    return {
+      label: t('titlebar.addToGroup'),
+      icon: <FolderTree size={15} />,
+      submenu: [
+        ...groups.map((g) => ({ label: g.name, onClick: () => moveTabIntoGroup(tabId, g.id) })),
+        { separator: true },
+        create
+      ]
+    }
+  }
+
   const tabMenu = (tab: TabState): MenuItem[] => {
     if (tab.kind === 'page') {
       const move = moveToWorkspaceItem(tab)
@@ -591,10 +622,22 @@ export function TitleBar(): React.JSX.Element {
       ]
     }
     if (tab.kind === 'repo' && tab.repos[0]) {
-      const extras: MenuItem[] = []
+      const extras: MenuItem[] = [addToGroupItem(tab.id)]
       const move = moveToWorkspaceItem(tab)
-      if (move) extras.push(move)
-      return repositoryMenuItems(tab.repos[0].path, () => requestCloseTab(tab.id), extras)
+      if (move) extras.push(move, { separator: true })
+      // A tab closes rather than "removes": nothing leaves the disk, and the
+      // strip's own vocabulary is close, so the last rows say that.
+      const alone = settings.tabs.length < 2
+      extras.push(
+        { label: t('titlebar.closeThisRepo'), onClick: () => requestCloseTab(tab.id) },
+        {
+          label: t('titlebar.closeOthers'),
+          disabled: alone,
+          title: alone ? t('titlebar.closeOthersNone') : undefined,
+          onClick: () => requestCloseOtherTabs(tab.id)
+        }
+      )
+      return repositoryMenuItems(tab.repos[0].path, null, extras)
     }
     const items: MenuItem[] = []
     if (tab.kind === 'group') {
@@ -621,22 +664,14 @@ export function TitleBar(): React.JSX.Element {
         icon: <FolderPlus size={15} />,
         onClick: () => promptNewFolder(tab.id, null)
       })
-      items.push({
-        label: t('titlebar.changeColor'),
-        onClick: () =>
-          openModal({
-            kind: 'group-color',
-            tabId: tab.id,
-            current: tab.color,
-            onSelect: (color) => setTabColor(tab.id, color)
-          })
-      })
       if (tab.activeRepoPath) {
         items.push({
           label: t('titlebar.viewGroupHome'),
           onClick: () => setGroupActiveRepo(tab.id, null)
         })
       }
+      items.push({ separator: true })
+      items.push(...colorMenuItems(tab.color, (color) => setTabColor(tab.id, color)))
       items.push({ separator: true })
     }
     items.push({
@@ -653,7 +688,21 @@ export function TitleBar(): React.JSX.Element {
     })
     const move = moveToWorkspaceItem(tab)
     if (move) items.push(move)
-    items.push({ separator: true }, { label: t('titlebar.closeTab'), onClick: () => requestCloseTab(tab.id) })
+    items.push({ separator: true })
+    if (tab.kind === 'group') {
+      // Nothing is lost: each repository stays open as its own tab, keeping its pages.
+      items.push({
+        label: t('titlebar.ungroup'),
+        icon: <Ungroup size={15} />,
+        disabled: tab.repos.length === 0,
+        title: tab.repos.length === 0 ? t('titlebar.ungroupEmpty') : undefined,
+        onClick: () => ungroupTab(tab.id)
+      })
+    }
+    items.push({
+      label: tab.kind === 'group' ? t('titlebar.closeGroupTitle') : t('titlebar.closeTab'),
+      onClick: () => requestCloseTab(tab.id)
+    })
     return items
   }
 
@@ -747,18 +796,10 @@ export function TitleBar(): React.JSX.Element {
           }
         })
     })
-    items.push({
-      label: t('titlebar.changeColor'),
-      onClick: () =>
-        openModal({
-          kind: 'group-color',
-          tabId: tab.id,
-          current: folder.color ?? tab.color,
-          onSelect: (color) => setFolderColor(tab.id, folder.id, color)
-        })
-    })
     const move = moveFolderItem(tab, folder)
     if (move) items.push(move)
+    items.push({ separator: true })
+    items.push(...colorMenuItems(folder.color ?? tab.color, (color) => setFolderColor(tab.id, folder.id, color)))
     items.push(
       { separator: true },
       {
@@ -885,13 +926,12 @@ export function TitleBar(): React.JSX.Element {
         exit={{ opacity: 0, width: 0, paddingLeft: 0, paddingRight: 0 }}
         transition={{ duration: 0.2, ease: 'easeInOut' }}
       >
-        <FolderGit2 size={13} />
-        <span
+        <RepoTabLabel
+          repoPath={repo.path}
+          name={repoDisplayName(repo.path, settings.repoAliases, repo.name)}
           className={`tab-name ${isActiveRepo && tab.activePage != null ? 'tab-name-back' : ''}`}
           title={isActiveRepo && tab.activePage != null ? t('titlebar.backToRepo') : undefined}
-        >
-          {repoDisplayName(repo.path, settings.repoAliases, repo.name)}
-        </span>
+        />
         {/* Only on the selected repository: the icons belong to it, and every
             chip carrying its own row of them would drown the group. */}
         {isActiveRepo && renderPageChips(tab.id, tab.pages, tab.activePage, repo.path)}
@@ -1055,13 +1095,12 @@ export function TitleBar(): React.JSX.Element {
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ duration: 0.15 }}
               >
-                <FolderGit2 size={13} />
-                <span
+                <RepoTabLabel
+                  repoPath={tab.repos[0]?.path}
+                  name={tab.name}
                   className={`tab-name ${tab.activePage != null ? 'tab-name-back' : ''}`}
                   title={tab.activePage != null ? t('titlebar.backToRepo') : undefined}
-                >
-                  {tab.name}
-                </span>
+                />
                 {renderPageChips(tab.id, tab.pages, tab.activePage, tab.repos[0]?.path ?? '')}
                 {status && (
                   <span

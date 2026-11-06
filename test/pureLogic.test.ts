@@ -3,10 +3,15 @@ import { readdirSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { parseRemoteUrl } from '../src/main/hosting'
+import { parseDiff } from '../src/renderer/src/lib/diff'
+import { buildLinePatch, extractHunks, singleHunkPatch } from '../src/renderer/src/lib/hunkPatch'
+import { readDraft, settleDraft } from '../src/renderer/src/lib/boundedNumber'
 
 import { treeStatusOf } from '../src/renderer/src/lib/treeStatus'
+import { focusOpenRepo } from '../src/renderer/src/lib/tabLookup'
 import { timeAgo, isStale, STALE_AFTER_MS } from '../src/renderer/src/lib/timeAgo'
 import { isLockErrorMessage, lockRepairPlan } from '../src/renderer/src/lib/gitLocks'
+import { GROUP_COLORS, colorNameKey, pickGroupColor } from '../src/renderer/src/lib/groupColors'
 import { stackOrder, moveLevel, adoptableBranches, targetFor } from '../src/renderer/src/lib/stackOrder'
 import { planStackSubmit, summariseStackPlan } from '../src/shared/stackPr'
 import { groupPrStacks, stackRowStates } from '../src/renderer/src/lib/prStacks'
@@ -15,6 +20,7 @@ import { childrenOf, clearDoneTodos, createTodo, filterTodos, moveTodo, patchTod
 import { branchMatches, isSafeLinkUrl, isSafeRepoRelPath, parseRepoConfig, satisfiesNodeRange, serializeRepoConfig, validateRepoConfig } from '../src/shared/repoConfig'
 import { appendTrailers, configTrailers, doctorSummary, effectiveProtected, isProtectedBranch, ticketSegments } from '../src/renderer/src/lib/repoConfig'
 import { buildMenuSpec } from '../src/renderer/src/lib/appMenu'
+import { planRepositoryPick } from '../src/renderer/src/lib/repositoryPick'
 import { acceleratorFromCombo, isMenuRole } from '../src/shared/menu'
 import { MAIN_WINDOW_STATE, showMainWindow } from '../src/main/windowState'
 
@@ -26,6 +32,8 @@ import { parsePbxproj, mergePbxproj, isaOf, isPbxprojPath } from '../src/shared/
 import { parsePlist, plistScalar, plistChildCount } from '../src/renderer/src/lib/plist'
 import { pbxprojOutline } from '../src/renderer/src/lib/pbxprojOutline'
 import { previewKind, isBinaryKind } from '../src/renderer/src/preview/registry'
+import type { FileEntry } from '../src/shared/types'
+import { followCommitFile, followWipFile, headMove, headOf, isHeadCommit } from '../src/renderer/src/lib/wipFileFollow'
 import { lockfileFor } from '../src/renderer/src/lib/lockfiles'
 import { isBuildNoise, ignoreLineFor } from '../src/renderer/src/lib/buildNoise'
 import { bucketOf, fileStats, summaryChips, SAMPLE_STATUS } from '../src/renderer/src/lib/fileStats'
@@ -45,7 +53,15 @@ import {
   sectionKey
 } from '../src/renderer/src/lib/repoSections'
 import { planWorkspaces } from '../src/renderer/src/lib/workspacePlan'
-import { repathRepoSettings } from '../src/renderer/src/lib/repoRepath'
+import { repathRepoSettings, repathRepoTabs } from '../src/renderer/src/lib/repoRepath'
+import {
+  applyRepoImage,
+  lookupRepoImage,
+  isImagePath,
+  normalizeImagePath,
+  rankImageCandidates,
+  tabLabelParts
+} from '../src/renderer/src/lib/repoImage'
 import { resolveUpdateOffer } from '../src/renderer/src/lib/updateOffer'
 import { worktreeForBranch, worktreeTabName } from '../src/renderer/src/lib/worktrees'
 import { focusedHashes, focusedStashes, defaultBranchName } from '../src/renderer/src/lib/graphFocus'
@@ -81,11 +97,11 @@ import {
 } from '../src/renderer/src/lib/launchDevices'
 import { collectInputRefs, normalizeOptions, defaultOptionIndex, isPickInput } from '../src/renderer/src/lib/launchInputs'
 import { resolveInputTokens } from '../src/main/launch'
-import { closeTabPrompt, repoCloseStatus, tabCloseStatus } from '../src/renderer/src/lib/tabClose'
+import { closeOthersPrompt, closeTabPrompt, repoCloseStatus, tabCloseStatus } from '../src/renderer/src/lib/tabClose'
 import { formatBytes, parseTooLargeError } from '../src/renderer/src/lib/fileSize'
 import { FILE_TOO_LARGE_PREFIX } from '../src/shared/types'
 import { autolink, remoteWebUrl, filePermalink } from '../src/renderer/src/lib/autolink'
-import { githubCommitUrl, parseGitHubRemote, githubRemote } from '../src/renderer/src/lib/hosting'
+import { githubCommitUrl, parseGitHubRemote, githubRemote, forkUpstream, prsFromFork } from '../src/renderer/src/lib/hosting'
 import {
   commitMenuCapabilities,
   commitMenuDisabledKey,
@@ -190,7 +206,7 @@ import {
   subtreePaths,
   updateFolder
 } from '../src/renderer/src/lib/repoFolders'
-import type { RepoFolder, RepoRef } from '../src/shared/types'
+import type { RepoFolder, RepoRef, RemoteInfo } from '../src/shared/types'
 import {
   buildDiffEvidence,
   serializeEvidence,
@@ -727,6 +743,8 @@ describe('keyboard shortcuts', () => {
   it('matchShortcut resolves the bound id', () => {
     const b = effectiveBindings(undefined)
     expect(matchShortcut(ev('k', { meta: true }), b)).toBe('command-palette')
+    expect(matchShortcut(ev('j', { meta: true }), b)).toBe('repo-switcher')
+    expect(matchShortcut(ev('j', { ctrl: true }), b)).toBe('repo-switcher')
     expect(matchShortcut(ev('v', { ctrl: true, shift: true }), b)).toBe('vault')
     expect(matchShortcut(ev(',', { meta: true }), b)).toBe('settings')
     expect(matchShortcut(ev('E', { meta: true, shift: true }), b)).toBe('toggle-left-sidebar')
@@ -866,6 +884,23 @@ describe('closing a tab', () => {
 
     const conflict = closeTabPrompt(groupTab(['/a', '/b']), 'conflict', 'always')
     expect(conflict?.reasonKey).toBe('titlebar.mergeConflicts')
+  })
+
+  it('asks before Close others only as warnOnClose says, and never for page tabs alone', () => {
+    const page = { id: 'p1', kind: 'page', page: { type: 'vault' } } as unknown as TabState
+    const others = [repoTab as TabState, groupTab(['/a', '/b'])]
+    expect(closeOthersPrompt([page, page], 'conflict', 'always')).toBeNull()
+    expect(closeOthersPrompt(others, 'conflict', 'never')).toBeNull()
+    expect(closeOthersPrompt(others, null, 'wip')).toBeNull()
+
+    const plain = closeOthersPrompt([...others, page], null, undefined)
+    expect(plain).toEqual({ messageKey: 'titlebar.closeOthersConfirm', vars: { count: 3 }, autoFocusConfirm: true })
+
+    const wip = closeOthersPrompt(others, 'wip', 'wip')
+    expect(wip?.messageKey).toBe('titlebar.closeOthersDirty')
+    expect(wip?.reasonKey).toBe('titlebar.uncommittedChanges')
+    expect(wip?.autoFocusConfirm).toBe(false)
+    expect(closeOthersPrompt(others, 'conflict', 'always')?.reasonKey).toBe('titlebar.mergeConflicts')
   })
 })
 
@@ -6960,6 +6995,42 @@ describe('repoSections', () => {
   })
 })
 
+describe('repathRepoTabs', () => {
+  it('reconnects tabs, nested group folders and repo pages without duplicate entries', () => {
+    const tabs = repathRepoTabs(
+      [
+        {
+          id: 'g',
+          kind: 'group',
+          name: 'Group',
+          activeRepoPath: '/old',
+          repos: [{ path: '/old', name: 'Old' }, { path: '/new', name: 'New' }],
+          folders: [{ id: 'f', name: 'Nested', paths: ['/old'], folders: [] }],
+          pages: [{ type: 'wiki', repoPath: '/old' }]
+        },
+        { id: 'r', kind: 'repo', name: 'Repo', activeRepoPath: '/old', repos: [{ path: '/old', name: 'Repo' }] },
+        { id: 'p', kind: 'page', name: 'Insights', page: { type: 'insights', repoPath: '/old' } }
+      ],
+      '/old',
+      '/new'
+    )
+    expect(JSON.stringify(tabs)).not.toContain('/old')
+    expect(tabs[0]).toMatchObject({
+      activeRepoPath: '/new',
+      repos: [{ path: '/new' }],
+      folders: [{ paths: ['/new'] }],
+      pages: [{ repoPath: '/new' }]
+    })
+    expect(tabs[1]).toMatchObject({ activeRepoPath: '/new', repos: [{ path: '/new' }] })
+    expect(tabs[2]).toMatchObject({ page: { repoPath: '/new' } })
+  })
+
+  it('leaves tabs untouched when the folder did not move', () => {
+    const tabs: TabState[] = [{ id: 'r', kind: 'repo', name: 'Repo', activeRepoPath: '/a', repos: [{ path: '/a', name: 'A' }] }]
+    expect(repathRepoTabs(tabs, '/a', '/a')).toBe(tabs)
+  })
+})
+
 describe('repathRepoSettings', () => {
   it('moves alias, profile and star from oldPath to newPath', () => {
     const result = repathRepoSettings(
@@ -7037,5 +7108,362 @@ describe('repathRepoSettings', () => {
     expect(result.repoAliases).toEqual({ '/r/same': 'Alias' })
     expect(result.repoProfiles).toEqual({ '/r/same': 'profile-1' })
     expect(result.favouriteRepos).toEqual(['/r/same'])
+  })
+
+  it('moves the tab image, keeping the destination one when it has its own', () => {
+    const base = { repoAliases: {}, repoProfiles: {}, favouriteRepos: [] }
+    expect(
+      repathRepoSettings({ ...base, repoImages: { '/r/old': 'logo.png' } }, '/r/old', '/r/new').repoImages
+    ).toEqual({ '/r/new': 'logo.png' })
+    expect(
+      repathRepoSettings({ ...base, repoImages: { '/r/old': 'a.png', '/r/new': 'b.png' } }, '/r/old', '/r/new')
+        .repoImages
+    ).toEqual({ '/r/new': 'b.png' })
+  })
+})
+
+describe('repo tab images', () => {
+  it('normalizes the stored path', () => {
+    expect(normalizeImagePath('  .\\assets\\logo.png ')).toBe('assets/logo.png')
+    expect(normalizeImagePath('./././a.png')).toBe('a.png')
+  })
+
+  it('sets, looks up by canonical path, and clears', () => {
+    const set = applyRepoImage(undefined, 'C:\\Repos\\app\\', './icon.png')
+    expect(set).toEqual({ 'c:/Repos/app': 'icon.png' })
+    expect(lookupRepoImage('c:/Repos/app', set)).toBe('icon.png')
+    expect(applyRepoImage(set, 'c:/Repos/app', '')).toEqual({})
+    expect(applyRepoImage(set, 'c:/Repos/app', null)).toEqual({})
+  })
+
+  it('recognises image files by extension, case-insensitively', () => {
+    expect(isImagePath('assets/Logo.PNG')).toBe(true)
+    expect(isImagePath('a/b.svg')).toBe(true)
+    expect(isImagePath('notes.txt')).toBe(false)
+    expect(isImagePath('png')).toBe(false)
+    expect(isImagePath('weird.png/readme')).toBe(false)
+  })
+
+  it('suggests logo-ish and shallow images first, and never non-images', () => {
+    const files = ['docs/shots/a.png', 'src/index.ts', 'deep/x/y/logo.svg', 'banner.jpg', 'assets/icon.png']
+    expect(rankImageCandidates(files, '')).toEqual(['assets/icon.png', 'deep/x/y/logo.svg', 'banner.jpg', 'docs/shots/a.png'])
+  })
+
+  it('filters by every query word, anywhere in the path', () => {
+    const files = ['assets/logo.png', 'assets/logo-dark.png', 'docs/logo.png', 'assets/hero.webp']
+    expect(rankImageCandidates(files, 'assets dark')).toEqual(['assets/logo-dark.png'])
+    expect(rankImageCandidates(files, 'LOGO')).toHaveLength(3)
+    expect(rankImageCandidates(files, 'nothing')).toEqual([])
+  })
+
+  it('caps the number of suggestions', () => {
+    const files = Array.from({ length: 100 }, (_, i) => `img/${i}.png`)
+    expect(rankImageCandidates(files, '', 40)).toHaveLength(40)
+  })
+
+  it('always shows the name when there is no image', () => {
+    expect(tabLabelParts('image', false)).toEqual({ image: false, name: true })
+    expect(tabLabelParts(undefined, false)).toEqual({ image: false, name: true })
+  })
+
+  it('follows the mode when there is an image, defaulting to both', () => {
+    expect(tabLabelParts(undefined, true)).toEqual({ image: true, name: true })
+    expect(tabLabelParts('both', true)).toEqual({ image: true, name: true })
+    expect(tabLabelParts('name', true)).toEqual({ image: false, name: true })
+    expect(tabLabelParts('image', true)).toEqual({ image: true, name: false })
+  })
+})
+
+describe('fork upstream pull requests', () => {
+  const remote = (name: string, url: string): RemoteInfo => ({ name, url }) as RemoteInfo
+
+  it('finds the parent only when upstream is a different GitHub repository', () => {
+    const fork = forkUpstream([
+      remote('origin', 'https://github.com/someone/gitcito.git'),
+      remote('upstream', 'git@github.com:MyAppDesk/gitcito.git')
+    ])
+    expect(fork?.fork).toBe('someone/gitcito')
+    expect(fork?.parent).toBe('MyAppDesk/gitcito')
+    expect(fork?.upstream.name).toBe('upstream')
+    expect(forkUpstream([remote('origin', 'https://github.com/a/b.git')])).toBeNull()
+    expect(
+      forkUpstream([remote('origin', 'https://github.com/a/b.git'), remote('upstream', 'https://github.com/A/B')])
+    ).toBeNull()
+    expect(
+      forkUpstream([remote('origin', 'https://github.com/a/b.git'), remote('upstream', 'https://gitlab.com/c/b.git')])
+    ).toBeNull()
+  })
+
+  it("keeps only the parent's PRs whose head is the fork", () => {
+    const prs = [
+      { id: 42, headRepo: 'someone/gitcito' },
+      { id: 7, headRepo: 'other/gitcito' },
+      { id: 8, headRepo: 'MyAppDesk/gitcito' },
+      { id: 9 }
+    ]
+    expect(prsFromFork(prs, 'Someone/Gitcito').map((p) => p.id)).toEqual([42])
+  })
+})
+
+describe('planRepositoryPick', () => {
+  it('passes a single pick through, open or not, repository or not', () => {
+    expect(planRepositoryPick([{ path: '/r/plain', open: false, repo: false }])).toEqual({
+      open: [{ path: '/r/plain', name: 'plain' }],
+      notices: []
+    })
+    expect(planRepositoryPick([])).toEqual({ open: [], notices: [] })
+  })
+
+  it('skips open repositories and plain folders in a pick of several, naming each', () => {
+    const plan = planRepositoryPick([
+      { path: '/r/a', open: false, repo: true },
+      { path: '/r/b', open: true, repo: true },
+      { path: '/r/c/', open: false, repo: false },
+      { path: '/r/d', open: false, repo: true }
+    ])
+    expect(plan.open).toEqual([
+      { path: '/r/a', name: 'a' },
+      { path: '/r/d', name: 'd' }
+    ])
+    expect(plan.notices).toEqual([
+      { key: 'repos.skippedOpenOne', vars: { name: 'b' } },
+      { key: 'repos.skippedNotRepoOne', vars: { name: 'c' } }
+    ])
+  })
+
+  it('names several skipped folders in one notice', () => {
+    const plan = planRepositoryPick([
+      { path: '/r/a', open: true, repo: true },
+      { path: '/r/b', open: true, repo: true },
+      { path: 'C:\\r\\x', open: false, repo: false },
+      { path: '/r/y', open: false, repo: false }
+    ])
+    expect(plan.open).toEqual([])
+    expect(plan.notices).toEqual([
+      { key: 'repos.skippedOpenMany', vars: { n: 2, names: 'a, b' } },
+      { key: 'repos.skippedNotRepoMany', vars: { n: 2, names: 'x, y' } }
+    ])
+  })
+})
+
+describe('bounded number drafts', () => {
+  const bounds = { min: 50, max: 5000 }
+
+  it('lets 2000 be typed digit by digit — the bug was clamping the leading 2 to 50', () => {
+    expect(readDraft('2', bounds)).toEqual({ status: 'out-of-range', nearest: 50 })
+    expect(readDraft('20', bounds)).toEqual({ status: 'out-of-range', nearest: 50 })
+    expect(readDraft('200', bounds)).toEqual({ status: 'valid', value: 200 })
+    expect(readDraft('2000', bounds)).toEqual({ status: 'valid', value: 2000 })
+  })
+
+  it('snaps to the nearest bound on leaving, and keeps the last good value for junk', () => {
+    expect(settleDraft('20', bounds, 300)).toBe(50)
+    expect(settleDraft('99999', bounds, 300)).toBe(5000)
+    expect(settleDraft('', bounds, 300)).toBe(300)
+    expect(settleDraft('1e3', bounds, 300)).toBe(300)
+    expect(settleDraft(' 750 ', bounds, 300)).toBe(750)
+  })
+
+  it('treats a missing max as open-ended', () => {
+    expect(readDraft('123456', { min: 0 })).toEqual({ status: 'valid', value: 123456 })
+  })
+})
+
+describe('hunk and line patches', () => {
+  const DIFF = [
+    'diff --git a/f.txt b/f.txt',
+    'index 1111111..2222222 100644',
+    '--- a/f.txt',
+    '+++ b/f.txt',
+    '@@ -1,3 +1,3 @@',
+    ' keep',
+    '-old',
+    '+new',
+    ' tail',
+    '@@ -10,2 +10,3 @@',
+    ' ten',
+    '+added',
+    ' eleven',
+    ''
+  ].join('\n')
+  const lines = parseDiff(DIFF)
+  const header = extractHunks(DIFF).header
+  const at = (kind: string, text: string): number => lines.findIndex((l) => l.kind === kind && l.text === text)
+
+  it('splits a diff into its header and hunks, and rebuilds any one hunk alone', () => {
+    const split = extractHunks(DIFF)
+    expect(split.header.split('\n')).toHaveLength(4)
+    expect(split.hunks).toHaveLength(2)
+    expect(singleHunkPatch(split, 1)).toBe(`${split.header}\n@@ -10,2 +10,3 @@\n ten\n+added\n eleven\n\n`)
+  })
+
+  it('keeps an unselected deletion as context going forwards, and drops an unselected addition', () => {
+    const patch = buildLinePatch(lines, header, new Set([at('add', 'new')]), 'forward')
+    expect(patch).toContain('@@ -1,3 +1,4 @@\n keep\n old\n+new\n tail')
+    expect(patch).not.toContain('@@ -10')
+  })
+
+  it('mirrors that for a reversed patch: the unselected addition stays, the deletion goes', () => {
+    const patch = buildLinePatch(lines, header, new Set([at('del', 'old')]), 'reverse')
+    expect(patch).toContain('@@ -1,4 +1,3 @@\n keep\n-old\n new\n tail')
+  })
+
+  it('never claims a line past the end of the diff', () => {
+    const patch = buildLinePatch(lines, header, new Set([at('add', 'added')]), 'forward')
+    expect(patch.endsWith('@@ -10,2 +10,3 @@\n ten\n+added\n eleven\n')).toBe(true)
+  })
+
+  it('keeps the no-newline marker with its line, and drops it with an omitted line', () => {
+    const eof = ['@@ -1,2 +1,2 @@', ' a', '-b', '\\ No newline at end of file', '+b', ''].join('\n')
+    const eofLines = parseDiff(eof)
+    const del = eofLines.findIndex((l) => l.kind === 'del')
+    const add = eofLines.findIndex((l) => l.kind === 'add')
+    expect(buildLinePatch(eofLines, header, new Set([del, add]), 'forward')).toContain(
+      '@@ -1,2 +1,2 @@\n a\n-b\n\\ No newline at end of file\n+b\n'
+    )
+    // Reversed with only the addition picked, the deletion is omitted and so is its marker.
+    expect(buildLinePatch(eofLines, header, new Set([add]), 'reverse')).not.toContain('No newline')
+  })
+})
+
+describe('followWipFile', () => {
+  const unstagedSide = { type: 'wip', staged: false, untracked: false } as const
+  const stagedSide = { type: 'wip', staged: true, untracked: false } as const
+  const entry = (path: string, untracked = false): FileEntry => ({ path, status: 'M', untracked })
+  const lists = (staged: FileEntry[], unstaged: FileEntry[], conflicted: FileEntry[] = []) => ({ staged, unstaged, conflicted })
+
+  it('flips to staged when the file was staged elsewhere', () => {
+    expect(followWipFile(unstagedSide, 'a.ts', lists([entry('a.ts')], []))).toEqual({
+      kind: 'move',
+      source: { type: 'wip', staged: true, untracked: false }
+    })
+  })
+
+  it('flips to unstaged, carrying untracked, when the file was unstaged elsewhere', () => {
+    expect(followWipFile(stagedSide, 'a.ts', lists([], [entry('a.ts', true)]))).toEqual({
+      kind: 'move',
+      source: { type: 'wip', staged: false, untracked: true }
+    })
+  })
+
+  it('keeps the chosen side while a file is partly staged', () => {
+    const both = lists([entry('a.ts')], [entry('a.ts')])
+    expect(followWipFile(unstagedSide, 'a.ts', both)).toEqual({ kind: 'keep' })
+    expect(followWipFile(stagedSide, 'a.ts', both)).toEqual({ kind: 'keep' })
+  })
+
+  it('keeps a view already on the right side', () => {
+    expect(followWipFile(stagedSide, 'a.ts', lists([entry('a.ts')], []))).toEqual({ kind: 'keep' })
+  })
+
+  it('leaves conflicted files alone', () => {
+    expect(followWipFile(unstagedSide, 'a.ts', lists([entry('a.ts')], [], [entry('a.ts')]))).toEqual({ kind: 'keep' })
+  })
+
+  it('reports a file that is no longer a working change', () => {
+    expect(followWipFile(unstagedSide, 'a.ts', lists([entry('b.ts')], []))).toEqual({ kind: 'left' })
+  })
+})
+
+describe('followCommitFile', () => {
+  const entry = (path: string, untracked = false): FileEntry => ({ path, status: 'M', untracked })
+  const lists = (staged: FileEntry[], unstaged: FileEntry[], conflicted: FileEntry[] = []) => ({ staged, unstaged, conflicted })
+
+  it('keeps a commit HEAD has not left', () => {
+    expect(followCommitFile('a.ts', false, false, lists([entry('a.ts')], []))).toEqual({ kind: 'keep' })
+  })
+
+  it('returns an undone commit to the staged side when a soft reset left it there', () => {
+    expect(followCommitFile('a.ts', true, true, lists([entry('a.ts')], [entry('a.ts')]))).toEqual({
+      kind: 'move',
+      source: { type: 'wip', staged: true, untracked: false }
+    })
+  })
+
+  it('returns an undone commit to the unstaged side after a mixed reset', () => {
+    expect(followCommitFile('a.ts', true, true, lists([], [entry('a.ts', true)]))).toEqual({
+      kind: 'move',
+      source: { type: 'wip', staged: false, untracked: true }
+    })
+  })
+
+  it('looks in the new HEAD when HEAD was rewritten and the file is not a working change', () => {
+    expect(followCommitFile('a.ts', true, false, lists([], []))).toEqual({ kind: 'head' })
+  })
+
+  it('closes when HEAD was undone and its changes thrown away, rather than show the parent', () => {
+    expect(followCommitFile('a.ts', true, true, lists([], []))).toEqual({ kind: 'close' })
+  })
+
+  it('reads HEAD from log decorations, attached or detached', () => {
+    expect(isHeadCommit(['HEAD -> main', 'origin/main'])).toBe(true)
+    expect(isHeadCommit(['HEAD'])).toBe(true)
+    expect(isHeadCommit(['origin/HEAD', 'main'])).toBe(false)
+  })
+})
+
+describe('headMove', () => {
+  const c = (hash: string, parents: string[], head = false) => ({ hash, parents, refs: head ? ['HEAD -> main'] : [] })
+  const on = (sha: string, ...commits: ReturnType<typeof c>[]) => ({ commits, branches: { locals: [{ sha, isCurrent: true }] } })
+  const base = c('a', [])
+  const before = on('b', c('b', ['a'], true), base)
+
+  it('tells a commit on top, an amend beside it and an undo apart', () => {
+    expect(headMove(before, on('c', c('c', ['b'], true), c('b', ['a']), base)).kind).toBe('committed')
+    expect(headMove(before, on('b2', c('b2', ['a'], true), base)).kind).toBe('amended')
+    expect(headMove(before, on('a', c('a', [], true))).kind).toBe('undone')
+    expect(headMove(before, before).kind).toBe('none')
+  })
+
+  it('sees an undo even when a stash keeps the undone commit in the log', () => {
+    const after = on('a', c('s', ['b']), c('b', ['a']), c('a', [], true))
+    expect(headMove(before, after).kind).toBe('undone')
+  })
+
+  it('reads HEAD from the branch, not the log label', () => {
+    // A log row that lost its `HEAD ->` decoration does not lose HEAD.
+    expect(headOf(on('b', c('b', ['a']), base))?.hash).toBe('b')
+  })
+})
+
+describe('focusOpenRepo', () => {
+  const tabs: TabState[] = [
+    { id: 'a', kind: 'repo', name: 'a', repos: [{ path: '/r/a', name: 'a' }], activeRepoPath: '/r/a' },
+    {
+      id: 'g',
+      kind: 'group',
+      name: 'g',
+      repos: [{ path: '/r/b', name: 'b' }, { path: '/r/c', name: 'c' }],
+      activeRepoPath: '/r/b'
+    }
+  ]
+  it('finds a standalone repo tab', () => {
+    expect(focusOpenRepo(tabs, '/r/a')?.activeTabId).toBe('a')
+  })
+  it('finds a repo inside a group and makes it the group\'s active repo', () => {
+    const open = focusOpenRepo(tabs, '/r/c')
+    expect(open?.activeTabId).toBe('g')
+    expect(open?.tabs.find((t) => t.id === 'g')?.activeRepoPath).toBe('/r/c')
+  })
+  it('returns null for a repo that is not open', () => {
+    expect(focusOpenRepo(tabs, '/r/z')).toBeNull()
+  })
+})
+
+describe('pickGroupColor', () => {
+  it('picks a colour no open group wears yet', () => {
+    const used = GROUP_COLORS.filter((c) => c !== '#10b981')
+    expect(pickGroupColor([...used, undefined], () => 0.99)).toBe('#10b981')
+  })
+  it('does not always start at the first colour', () => {
+    expect(pickGroupColor([], () => 0.5)).toBe(GROUP_COLORS[5])
+    expect(pickGroupColor(['#6366F1'], () => 0)).toBe(GROUP_COLORS[1])
+  })
+  it('falls back to the whole palette once every colour is taken', () => {
+    expect(GROUP_COLORS).toContain(pickGroupColor(GROUP_COLORS, () => 0.3))
+  })
+  it('names palette colours and leaves custom ones unnamed', () => {
+    expect(colorNameKey('#EF4444')).toBe('color.red')
+    expect(colorNameKey('#123456')).toBeNull()
   })
 })

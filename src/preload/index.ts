@@ -8,6 +8,16 @@ const api = {
   // webPreferences.additionalArguments). Gates the screenshot-automation bridge.
   shotMode: process.argv.includes('--shot'),
 
+  // Terminal scroll forensics: set GITCITO_SCROLL_DEBUG=1 at launch and the
+  // terminal scroll listener streams its decisions through push() into
+  // userData/gitcito-scroll-debug.log. Diagnostic only.
+  scrollDebug: {
+    enabled: process.env.GITCITO_SCROLL_DEBUG === '1',
+    push: (line: string): void => {
+      ipcRenderer.send('scroll-debug', line)
+    }
+  },
+
   git: (method: string, ...args: unknown[]): Promise<unknown> => ipcRenderer.invoke('git', method, ...args),
 
   onCloneProgress: (cb: (p: unknown) => void): (() => void) => {
@@ -66,6 +76,7 @@ const api = {
   },
 
   selectDirectory: (title?: string): Promise<string | null> => ipcRenderer.invoke('dialog:selectDirectory', title),
+  selectDirectories: (title?: string): Promise<string[]> => ipcRenderer.invoke('dialog:selectDirectories', title),
   savePatch: (defaultName: string, content: string): Promise<string | null> =>
     ipcRenderer.invoke('dialog:savePatch', defaultName, content),
   openPatch: (): Promise<{ path: string; content: string } | null> => ipcRenderer.invoke('dialog:openPatch'),
@@ -137,6 +148,8 @@ const api = {
     detectCli: (): Promise<unknown> => ipcRenderer.invoke('ai:detectCli'),
     explainCode: (code: string, lang: string, cfg: unknown): Promise<unknown> =>
       ipcRenderer.invoke('ai:explainCode', code, lang, cfg),
+    editSelection: (req: unknown, cfg: unknown): Promise<unknown> =>
+      ipcRenderer.invoke('ai:editSelection', req, cfg),
     hoverExplain: (req: unknown, cfg: unknown): Promise<unknown> =>
       ipcRenderer.invoke('ai:hoverExplain', req, cfg),
     resolveConflict: (file: string, content: string, cfg: unknown): Promise<unknown> =>
@@ -400,6 +413,7 @@ const api = {
   },
 
   window: {
+    reportUiCrash: (message: string): void => ipcRenderer.send('window:ui-crashed', message),
     minimize: (): void => ipcRenderer.send('window:minimize'),
     maximize: (): void => ipcRenderer.send('window:maximize'),
     close: (): void => ipcRenderer.send('window:close')

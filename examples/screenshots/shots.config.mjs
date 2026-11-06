@@ -15,6 +15,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { writeFile, mkdir, rm, chmod } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
+import { execFileSync } from 'node:child_process'
 
 const ASSETS = join(dirname(fileURLToPath(import.meta.url)), 'assets')
 
@@ -787,6 +788,23 @@ export const shots = [
     }
   },
   {
+    // Discard everything, asking over a mixed tree that includes a staged new
+    // file — the confirm now says new files go too, and that Undo brings it back.
+    out: 'discard-all-undo',
+    repos: ['change-summary'],
+    themes: ['light'],
+    prepare: async ({ repoPaths, run }) => {
+      await run('git', ['-C', repoPaths['change-summary'], 'add', 'src/http/cache.js'])
+    },
+    drive: async (page, repoPaths) => {
+      const repo = repoPaths['change-summary']
+      await page.evaluate((p) => window.__shot.repo.getState().select(p, { type: 'wip' }), repo)
+      await page.waitForSelector('.composer .discard-btn:not([disabled])', { timeout: 10000 })
+      await page.click('.composer .discard-btn')
+      await page.waitForTimeout(500)
+    }
+  },
+  {
     // Commit composer prefilled from commit.template (.gitmessage).
     out: 'commit-template',
     repos: ['commit-template'],
@@ -877,6 +895,33 @@ export const shots = [
     }
   },
   {
+    // Repository switcher (⌘J). Opens several tabs and visits them so the list
+    // shows its real order: most recently used first, the current one dimmed.
+    out: 'repo-switcher',
+    repos: ['merge-conflict'],
+    recents: ['line-staging', 'octopus-merge', 'tags-and-releases', 'deep-history-monorepo', 'code-search', 'insights'],
+    themes: ['light'],
+    drive: async (page, paths) => {
+      const order = ['insights', 'code-search', 'deep-history-monorepo', 'tags-and-releases', 'octopus-merge', 'line-staging']
+      await page.evaluate(async ({ paths, order }) => {
+        const s = window.__shot
+        for (const name of order) s.settings.getState().openRepoTab({ path: paths[name], name })
+        // Visit them oldest first, ending on merge-conflict, to build the recency list.
+        const tabs = s.settings.getState().settings.tabs
+        for (const name of [...order, 'merge-conflict']) {
+          const tab = tabs.find((t) => t.kind === 'repo' && t.activeRepoPath === paths[name])
+          s.settings.getState().setActiveTab(tab.id)
+          await s.waitForRepo(paths[name]).catch(() => {})
+          await new Promise((r) => setTimeout(r, 150))
+        }
+      }, { paths, order })
+      await page.waitForTimeout(600)
+      await page.evaluate(() => window.__shot.ui.getState().setRepoSwitcher(true))
+      await page.locator('.repo-switcher-row').first().waitFor()
+      await page.waitForTimeout(400)
+    }
+  },
+  {
     // In-app code search (⌘⇧F) — git grep across the working tree.
     out: 'code-search',
     repos: ['code-search'],
@@ -954,6 +999,59 @@ export const shots = [
     }
   },
   {
+    // A fork's pull requests on its parent. The checkout gets an origin (the
+    // fork) and an upstream (the parent) on GitHub; neither can be reached from
+    // a shot, so the two lists are seeded straight into the store.
+    out: 'fork-upstream-prs',
+    repos: ['pr-ready-branch'],
+    themes: ['light'],
+    prepare: async ({ repoPaths, run }) => {
+      const repo = repoPaths['pr-ready-branch']
+      await run('git', ['-C', repo, 'remote', 'set-url', 'origin', 'https://github.com/you/pr-ready-branch.git'])
+      await run('git', ['-C', repo, 'remote', 'remove', 'upstream'], { allowFail: true })
+      await run('git', ['-C', repo, 'remote', 'add', 'upstream', 'https://github.com/example/pr-ready-branch.git'])
+    },
+    drive: async (page, repoPaths) => {
+      const repo = repoPaths['pr-ready-branch']
+      // Let the load's own PR refresh fail against the unreachable host first,
+      // so it cannot clear the seeded lists afterwards.
+      await page.waitForTimeout(1500)
+      await page.evaluate((p) => {
+        const pr = (id, owner, head, title, extra = {}) => ({
+          id,
+          title,
+          author: 'you',
+          sourceBranch: head,
+          targetBranch: 'main',
+          url: `https://github.com/${owner}/pr-ready-branch/pull/${id}`,
+          isDraft: false,
+          state: 'open',
+          headRepo: 'you/pr-ready-branch',
+          ...extra
+        })
+        window.__shot.repo.getState().patch(p, {
+          prs: [pr(3, 'you', 'try/experiment', 'wip: try the new parser on my fork', { isDraft: true })],
+          upstreamPrs: [
+            pr(128, 'example', 'feat/awesome-feature', 'feat: add the awesome feature', {
+              ci: 'success',
+              ciSummary: '4 passed'
+            }),
+            pr(131, 'example', 'fix/typo', 'docs: fix a typo in the README', {
+              ci: 'pending',
+              ciSummary: '3 passed · 1 running'
+            })
+          ]
+        })
+      }, repo)
+      await page.waitForTimeout(300)
+      const section = page.locator('.sb-header', { hasText: 'PULL REQUESTS' }).first()
+      if (await section.count()) {
+        await section.click()
+        await page.waitForTimeout(400)
+      }
+    }
+  },
+  {
     // The submit screen, on its plan step: what a submit is about to open, and
     // against what. The result step needs a live host, so this is the half that
     // can be photographed deterministically.
@@ -1008,6 +1106,16 @@ export const shots = [
       await page.waitForSelector('.context-menu')
       await page.waitForTimeout(400)
     }
+  },
+  {
+    // The repository and branch pickers with names too long for the toolbar:
+    // each value truncates with an ellipsis and the chevron stays beside it.
+    // Cropped, because the detail is a few pixels in a 1440px window.
+    out: 'toolbar-picker-chevron',
+    repos: ['pr-ready-branch'],
+    themes: ['light'],
+    clipTo: '.toolbar-left',
+    clipPad: 10
   },
   {
     // The same menu on a remote branch — rename drops out and delete targets
@@ -1209,6 +1317,37 @@ export const shots = [
     }
   },
   {
+    // Moved code: parseConfig cut from the top of utils.ts and pasted at the
+    // bottom, tinted blue at both ends with arrows pointing at each other,
+    // beside an ordinary one-line edit that stays red and green.
+    out: 'moved-code',
+    repos: ['moved-code'],
+    themes: ['dark'],
+    drive: async (page, repoPaths) => {
+      const repo = repoPaths['moved-code']
+      await page.evaluate((p) => {
+        window.__shot.ui.getState().setFileView({ repoPath: p, file: 'utils.ts', source: { type: 'wip', staged: false, untracked: false }, mode: 'diff' })
+      }, repo)
+      await page.locator('.diff-line.moved').first().waitFor()
+      await page.waitForTimeout(500)
+    }
+  },
+  {
+    // A one-word edit inside a ~118,000-character minified line. Word-level
+    // marking used to exhaust the renderer's memory here and leave a black window.
+    out: 'huge-line-diff',
+    repos: ['huge-line'],
+    themes: ['light'],
+    drive: async (page, repoPaths) => {
+      const repo = repoPaths['huge-line']
+      await page.evaluate((p) => {
+        window.__shot.ui.getState().setFileView({ repoPath: p, file: 'index.min.html', source: { type: 'wip', staged: false, untracked: false }, mode: 'diff' })
+      }, repo)
+      await page.waitForSelector('mark.word-add', { timeout: 15000 }).catch(() => {})
+      await page.waitForTimeout(500)
+    }
+  },
+  {
     // File view's change gutter (colored bars next to edited lines) plus the
     // minimap toggle, opened on the same modified file the word-diff shot uses.
     out: 'change-gutter',
@@ -1225,6 +1364,31 @@ export const shots = [
       await page.waitForTimeout(500)
       await page.locator('.code-gutter.mod').first().click()
       await page.waitForTimeout(400)
+    }
+  },
+  {
+    // An open diff keeping up with git: config.ts is opened on its Unstaged
+    // diff, then staged from outside the app, as a terminal or an agent would.
+    // The viewer follows it to the Staged side instead of reporting no changes.
+    out: 'file-follows-git',
+    repos: ['word-diff'],
+    themes: ['light'],
+    // Start from the unstaged edit even if an earlier run left it staged.
+    prepare: async ({ repoPaths, run }) => {
+      await run('git', ['-C', repoPaths['word-diff'], 'reset', '-q', '--', 'config.ts'], { allowFail: true })
+    },
+    drive: async (page, repoPaths) => {
+      const repo = repoPaths['word-diff']
+      await page.evaluate((p) => {
+        window.__shot.ui.getState().setFileView({ repoPath: p, file: 'config.ts', source: { type: 'wip', staged: false, untracked: false }, mode: 'diff' })
+      }, repo)
+      await page.waitForTimeout(600)
+      execFileSync('git', ['-C', repo, 'add', '--', 'config.ts'])
+      await page.evaluate((p) => window.__shot.repo.getState().refresh(p), repo)
+      await page.waitForTimeout(800)
+      // Coming back to the window from the terminal re-reads the open file.
+      await page.evaluate(() => window.dispatchEvent(new Event('focus')))
+      await page.waitForTimeout(1000)
     }
   },
   {
@@ -1724,6 +1888,34 @@ export const shots = [
     }
   },
   {
+    // Hunk and line actions — two lines selected (the bar offers Stage and
+    // Discard for just those), Stage hunk + Discard hunk on the hunk bar, and
+    // the right-click menu on a selected line.
+    out: 'hunk-line-actions',
+    repos: ['line-staging'],
+    themes: ['light'],
+    drive: async (page, repoPaths) => {
+      const repo = repoPaths['line-staging']
+      await page.evaluate((p) => {
+        const s = window.__shot
+        s.repo.getState().select(p, { type: 'wip' })
+        s.ui.getState().setFileView({
+          repoPath: p,
+          file: 'config.js',
+          source: { type: 'wip', staged: false, untracked: false },
+          mode: 'diff'
+        })
+      }, repo)
+      await page.locator('.diff-hunk-actions').first().waitFor()
+      await page.waitForTimeout(400)
+      await page.locator('.diff-line.add', { hasText: 'debug' }).click()
+      await page.locator('.diff-line.add', { hasText: 'tls' }).click()
+      await page.locator('.diff-select-bar').waitFor()
+      await page.locator('.diff-line.add', { hasText: 'tls' }).click({ button: 'right' })
+      await page.waitForTimeout(400)
+    }
+  },
+  {
     // Partial stash — pick which files go into the stash.
     out: 'stash-partial',
     repos: ['stash-picking'],
@@ -1995,6 +2187,32 @@ export const shots = [
     }
   },
   {
+    // New group dialog: name and colour asked together, colour preselected.
+    out: 'new-group-dialog',
+    repos: ['octopus-merge'],
+    themes: ['dark'],
+    drive: async (page) => {
+      await page.evaluate(() =>
+        window.__shot.ui.getState().openModal({ kind: 'new-group', onCreate: () => {} })
+      )
+      await page.waitForSelector('.group-color-swatches')
+      await page.keyboard.type('Services')
+      await page.waitForTimeout(400)
+    }
+  },
+  {
+    // Group chip menu: the colour row sits in the menu, Ungroup below it.
+    out: 'group-color-menu',
+    kind: 'group',
+    repos: ['octopus-merge', 'merge-conflict'],
+    themes: ['dark'],
+    drive: async (page) => {
+      await page.click('.tab-group-chip', { button: 'right' })
+      await page.waitForSelector('.context-menu')
+      await page.waitForTimeout(400)
+    }
+  },
+  {
     // Repository-scoped context menu — same entries on a grouped chip as on a
     // standalone tab. Alias, worktrees, copy, GitHub, terminal, reveal, editor,
     // remove.
@@ -2004,6 +2222,29 @@ export const shots = [
     themes: ['dark'],
     drive: async (page) => {
       await page.click('.tab.in-group', { button: 'right' })
+      await page.waitForSelector('.context-menu')
+      await page.waitForTimeout(400)
+    }
+  },
+  {
+    // A standalone repository tab's menu ends in Close this repo and Close
+    // others instead of Remove. Three tabs, so Close others has work to do.
+    out: 'repo-tab-close-others',
+    repos: ['octopus-merge', 'merge-conflict', 'code-search'],
+    themes: ['dark'],
+    drive: async (page, repoPaths) => {
+      await page.evaluate((paths) => {
+        const extra = ['merge-conflict', 'code-search'].map((name) => ({
+          id: `shot-${name}`,
+          kind: 'repo',
+          name,
+          repos: [{ path: paths[name], name }],
+          activeRepoPath: paths[name]
+        }))
+        window.__shot.settings.getState().update((s) => ({ ...s, tabs: [...s.tabs, ...extra] }))
+      }, repoPaths)
+      await page.waitForTimeout(1200)
+      await page.click('.tab:has-text("merge-conflict")', { button: 'right' })
       await page.waitForSelector('.context-menu')
       await page.waitForTimeout(400)
     }
@@ -2551,6 +2792,39 @@ export const shots = [
         repo
       )
       await page.waitForTimeout(600)
+    }
+  },
+  {
+    // A restored tab whose folder has gone. 'my-project' is not a playground
+    // repo, so its demo path never exists — the tab opens straight onto the
+    // "not found" card with Locate… and Retry, no repo moved on disk.
+    out: 'missing-repository',
+    repos: ['my-project'],
+    themes: ['light'],
+    drive: async (page) => {
+      await page.waitForSelector('.missing-repository', { timeout: 10000 })
+      await page.waitForTimeout(300)
+    }
+  },
+  {
+    // Settings → General with a value below the range still being typed: the
+    // field is flagged, not clamped, until it is left. Typed for real and never
+    // blurred — leaving the field would snap it to 50 and lose the state.
+    out: 'number-field-range',
+    repos: ['octopus-merge'],
+    themes: ['light'],
+    clipTo: '.modal',
+    drive: async (page) => {
+      await page.evaluate(() => window.__shot.ui.getState().openModal({ kind: 'settings', page: 'general' }))
+      await page.waitForTimeout(400)
+      const input = page
+        .locator('.settings-field', { has: page.locator('.settings-field-label', { hasText: 'Initial commits loaded' }) })
+        .locator('input')
+      await input.scrollIntoViewIfNeeded()
+      await input.click()
+      await page.keyboard.press('ControlOrMeta+A')
+      await page.keyboard.type('20')
+      await page.waitForSelector('.number-field-error', { timeout: 5000 })
     }
   },
 ]

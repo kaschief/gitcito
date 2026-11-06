@@ -1,17 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { X, GitCommitHorizontal, Sparkles, Loader2, Search, ChevronUp, ChevronDown, Pencil, Save, Link2, Play, Pause } from 'lucide-react'
+import { X, GitCommitHorizontal, Sparkles, Loader2, Search, ChevronUp, ChevronDown, Pencil, Save, Link2, Play, Pause, Wand2 } from 'lucide-react'
 import type { BlameLine, BlobSpec, FileHistoryEntry, NumberedLine } from '../../../shared/types'
 import { gitApi, aiApi, shellApi } from '../infrastructure/api'
 import { useSettingsStore } from '../stores/settings'
 import { useUIStore, type FileViewMode, type FileViewState } from '../stores/ui'
-import { useRepoStore } from '../stores/repo'
+import { useRepoStore, repoActions, type HunkActionKind } from '../stores/repo'
 import { canonicalRepoPath } from '../lib/repoAlias'
 import { filePermalink } from '../lib/autolink'
 import { revealLineWhenReady } from '../lib/reveal'
 import { editorLineMenuItems } from '../lib/editorOpen'
 import { useT, interp, type TranslationKey } from '../i18n'
 import { useHoverExplain } from './HoverExplain'
-import { DiffViewer } from './DiffViewer'
+import { DiffViewer, type HunkAction } from './DiffViewer'
+import { useFollowWipFile } from './useFollowWipFile'
 import { SemanticSummary } from './SemanticSummary'
 import { buildQueryRegExp, highlightHtml, type HighlightLayer } from './FileSearchBar'
 import { fileExt, guessLanguage, highlightLine } from '../lib/highlight'
@@ -42,6 +43,16 @@ const IMAGE_EXTS = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico', '
  *  complete, so find, reveal-line and text selection behave exactly as before. */
 const HUGE_LINES = 5000
 
+/** Each hunk action's labels: its @@ button, the selection bar's button, and
+ *  the line menu's row for one line. Keys, so a language switch is picked up. */
+const HUNK_LABELS = {
+  stage: { hunk: 'diff.stageHunk', lines: 'hunk.stageLines', line: 'hunk.stageLine' },
+  unstage: { hunk: 'hunk.unstage', lines: 'hunk.unstageLines', line: 'hunk.unstageLine' },
+  discard: { hunk: 'hunk.discard', lines: 'hunk.discardLines', line: 'hunk.discardLine' },
+  revert: { hunk: 'hunk.revert', lines: 'hunk.revertLines', line: 'hunk.revertLine' },
+  apply: { hunk: 'hunk.apply', lines: 'hunk.applyLines', line: 'hunk.applyLine' }
+} as const satisfies Record<HunkActionKind, { hunk: TranslationKey; lines: TranslationKey; line: TranslationKey }>
+
 function isImage(name: string): boolean {
   return IMAGE_EXTS.has(fileExt(name))
 }
@@ -52,7 +63,12 @@ function shaColor(sha: string): string {
   return GRAPH_COLORS[Math.abs(h) % GRAPH_COLORS.length]
 }
 
-function sourceRef(view: FileViewState): string | undefined {
+/**
+ * The ref the File, Preview and Blame views read. A deleted file has nothing on
+ * its own side, so they read the version just before the deletion instead.
+ */
+function sourceRef(view: FileViewState, deleted = false): string | undefined {
+  if (deleted) return beforeRef(view)
   if (view.source.type === 'commit') return view.source.hash
   if (view.source.type === 'stash') return view.source.untracked ? `${view.source.sha}^3` : view.source.sha
   if (view.source.type === 'tree') return undefined
@@ -81,7 +97,17 @@ function diffSides(view: FileViewState): { oldSide: BlobSpec; newSide: BlobSpec 
   return null // the project tree has no diff mode
 }
 
-function blameRef(view: FileViewState): string | undefined {
+/** The side a deletion removed the file from: the parent, the index or HEAD. */
+function beforeRef(view: FileViewState): string | undefined {
+  const s = view.source
+  if (s.type === 'commit') return `${s.hash}^`
+  if (s.type === 'stash') return `${s.sha}^1`
+  if (s.type === 'tree') return undefined
+  return s.staged ? 'HEAD' : ':0'
+}
+
+function blameRef(view: FileViewState, deleted = false): string | undefined {
+  if (deleted) return beforeRef(view)
   if (view.source.type === 'commit') return view.source.hash
   if (view.source.type === 'stash') return view.source.untracked ? `${view.source.sha}^3` : view.source.sha
   return undefined
@@ -182,6 +208,17 @@ export function FileViewer({ view }: { view: FileViewState }): React.JSX.Element
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState('')
   const [saving, setSaving] = useState(false)
+  useFollowWipFile(view, editing)
+
+  // ─── Scoped AI edit (Ctrl+I-style inline edit) ───
+  // Selection captured at "AI edit" click time — the instruction input then
+  // owns focus without losing it.
+  const [aiEditSel, setAiEditSel] = useState<{ start: number; end: number; text: string } | null>(null)
+  const [aiEditPrompt, setAiEditPrompt] = useState('')
+  const [aiEditing, setAiEditing] = useState(false)
+  // Replacement queued before startEditing() flips `editing` — spliced into
+  // the seeded draft on the next content load.
+  const pendingAiEdit = useRef<{ start: number; end: number; repl: string } | null>(null)
 
   const { repoPath, file, mode, source } = view
 
@@ -224,6 +261,14 @@ export function FileViewer({ view }: { view: FileViewState }): React.JSX.Element
     // the row's own menu (the sha actions) wins where it has already answered.
     if (!editorTracksDisk || blameOverrideRef || e.defaultPrevented) return
     const items = editorLineMenuItems(editorSetting, { path: `${repoPath}/${file}`, line, repo: repoPath })
+    // Scoped AI edit on the current selection — the Cursor/Ctrl+I flow.
+    if (aiEnabled && editableFile && mode === 'file' && !editing && !maskOn) {
+      items.push({
+        label: t('fileViewer.aiEdit'),
+        icon: <Wand2 size={13} />,
+        onClick: beginAiEdit
+      })
+    }
     // The line's own text is stored with the bookmark: it is what finds the
     // line again once the file has moved on (see lib/bookmarks.ts).
     const snippet = (content ?? '').split('\n')[line - 1] ?? ''
@@ -324,6 +369,13 @@ export function FileViewer({ view }: { view: FileViewState }): React.JSX.Element
   const canExplain = !fileIsImage && (mode === 'file' || mode === 'diff') && !!content
   // Host permalink to this file at the viewed commit (commit source + a remote).
   const repoData = useRepoStore((s) => s.repos[repoPath])
+  // A WIP deletion is read from the live status, so it follows the file between
+  // staged and unstaged; commits and stashes say so when they open the view.
+  const deleted = useRepoStore((s) => {
+    if (source.type !== 'wip') return source.type !== 'tree' && !!source.deleted
+    const st = s.repos[repoPath]?.status
+    return (source.staged ? st?.staged : st?.unstaged)?.find((f) => f.path === file)?.status === 'D'
+  })
   const originUrl = repoData?.remotes.find((r) => r.name === 'origin')?.url ?? repoData?.remotes[0]?.url
   const permalink = source.type === 'commit' ? filePermalink(originUrl, source.hash, file) : undefined
   // Which two blobs the semantic summary should compare (null for the project
@@ -335,7 +387,7 @@ export function FileViewer({ view }: { view: FileViewState }): React.JSX.Element
   // File view is otherwise showing the staged (':0') version.
   const onDiskFile = source.type === 'tree' || source.type === 'wip'
   // The file can be edited at all (drives the Edit button, shown from any mode).
-  const editableFile = onDiskFile && !fileIsImage && !binaryDoc
+  const editableFile = onDiskFile && !fileIsImage && !binaryDoc && !deleted
   // The editor is actually mounted (File view + editing toggled on).
   const editable = editableFile && mode === 'file' && content !== null
   const dirty = editing && content !== null && draft !== content
@@ -411,13 +463,92 @@ export function FileViewer({ view }: { view: FileViewState }): React.JSX.Element
     setExplaining(true)
     setExplain(null)
     try {
-      const text = await aiApi.explainCode(snippet, lang, useSettingsStore.getState().aiFor('explain'))
+      const text = await aiApi.explainCode(snippet, lang, { ...useSettingsStore.getState().aiFor('explain'), cliCwd: repoPath })
       setExplain(text || t('explain.empty'))
     } catch (err) {
       setExplain(null)
       toast('error', err instanceof Error ? err.message : String(err))
     } finally {
       setExplaining(false)
+    }
+  }
+
+  // Capture the current DOM selection as a 1-based inclusive line range —
+  // the same `.code-line`/`.code-no` walk hoverExplain uses.
+  const captureSelection = (): { start: number; end: number; text: string } | null => {
+    const sel = window.getSelection()
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return null
+    const range = sel.getRangeAt(0)
+    const lineOf = (node: Node | null): number | null => {
+      const el = node instanceof Element ? node : node?.parentElement
+      const no = el?.closest('.code-line, .blame-line')?.querySelector('.code-no')?.textContent
+      const n = Number(no)
+      return Number.isInteger(n) && n > 0 ? n : null
+    }
+    const a = lineOf(range.startContainer)
+    const b = lineOf(range.endContainer)
+    const text = sel.toString()
+    if (a === null || b === null || !text.trim()) return null
+    return { start: Math.min(a, b), end: Math.max(a, b), text }
+  }
+
+  const beginAiEdit = (): void => {
+    const sel = captureSelection()
+    if (!sel) {
+      toast('error', t('fileViewer.aiEditNoSel'))
+      return
+    }
+    setAiEditSel(sel)
+    setAiEditPrompt('')
+  }
+
+  // Splice the queued replacement into the editor-seeded draft — called by
+  // the content load when `editing` flips on.
+  const applyPendingAiEdit = (text: string): string => {
+    const p = pendingAiEdit.current
+    if (!p) return text
+    pendingAiEdit.current = null
+    const lines = text.split('\n')
+    const head = lines.slice(0, p.start - 1)
+    const tail = lines.slice(Math.min(p.end, lines.length))
+    const repl = p.repl.replace(/\n$/, '')
+    return [...head, repl, ...tail].join('\n')
+  }
+
+  const runAiEdit = async (): Promise<void> => {
+    if (!aiEditSel || content === null || maskOn) return
+    const lines = content.split('\n')
+    const code = lines.slice(aiEditSel.start - 1, aiEditSel.end).join('\n')
+    const ctx = 40
+    const contextBefore = lines.slice(Math.max(0, aiEditSel.start - 1 - ctx), aiEditSel.start - 1).join('\n')
+    const contextAfter = lines.slice(aiEditSel.end, aiEditSel.end + ctx).join('\n')
+    setAiEditing(true)
+    try {
+      const repl = await aiApi.editSelection(
+        {
+          file,
+          lang,
+          startLine: aiEditSel.start,
+          endLine: aiEditSel.end,
+          code,
+          contextBefore,
+          contextAfter,
+          instruction: aiEditPrompt.trim()
+        },
+        { ...useSettingsStore.getState().aiFor('explain'), cliCwd: repoPath }
+      )
+      if (repl.trim()) {
+        pendingAiEdit.current = { start: aiEditSel.start, end: aiEditSel.end, repl }
+        // Entering edit mode reloads the file and seeds the draft — the
+        // pending splice lands on top of that authoritative text.
+        startEditing()
+        toast('success', t('fileViewer.aiEditDone'))
+      }
+      setAiEditSel(null)
+    } catch (err) {
+      toast('error', err instanceof Error ? err.message : String(err))
+    } finally {
+      setAiEditing(false)
     }
   }
 
@@ -433,6 +564,7 @@ export function FileViewer({ view }: { view: FileViewState }): React.JSX.Element
     file,
     lang,
     modifier: hoverExplainKey,
+    repoPath,
     getLines: hoverLines,
     lineOf: (el) => {
       const no = el.closest('.code-line, .blame-line')?.querySelector('.code-no')?.textContent
@@ -445,6 +577,10 @@ export function FileViewer({ view }: { view: FileViewState }): React.JSX.Element
   useEffect(() => {
     setExplain(null)
     setExplaining(false)
+    // A pending AI-edit bar must not survive into another file — its Apply
+    // reads the CURRENT content, so over a masked secret file it would ship
+    // those lines to the provider.
+    setAiEditSel(null)
   }, [repoPath, file, mode, source.type])
 
   // Blame can't run on images or files that don't exist in history (untracked/new).
@@ -511,7 +647,7 @@ export function FileViewer({ view }: { view: FileViewState }): React.JSX.Element
           return
         }
         if (fileIsImage && mode === 'file') {
-          const url = await gitApi.fileDataUrl(repoPath, file, sourceRef(view), forceLoad)
+          const url = await gitApi.fileDataUrl(repoPath, file, sourceRef(view, deleted), forceLoad)
           if (!cancelled) {
             setImageUrl(url)
             setContent('')
@@ -531,17 +667,18 @@ export function FileViewer({ view }: { view: FileViewState }): React.JSX.Element
         } else if (mode === 'file') {
           // While editing, always read the on-disk working copy (ignore the
           // staged ':0' ref) so edits and saves target the real file.
-          const ref = editing && onDiskFile ? undefined : sourceRef(view)
+          const ref = editing && onDiskFile ? undefined : sourceRef(view, deleted)
           const text = await gitApi.fileContent(repoPath, file, ref, forceLoad)
           if (!cancelled) {
             setContent(text)
             // Seed the editor buffer from this authoritative load (entering edit
             // or switching file/mode). User keystrokes never trigger a reload, so
-            // this can't clobber unsaved typing.
-            if (editing) setDraft(text)
+            // this can't clobber unsaved typing. A queued AI-edit splice lands
+            // on top of the fresh seed.
+            if (editing) setDraft(applyPendingAiEdit(text))
           }
         } else if (mode === 'blame') {
-          const lines = await gitApi.blameFile(repoPath, file, blameOverrideRef ?? blameRef(view))
+          const lines = await gitApi.blameFile(repoPath, file, blameOverrideRef ?? blameRef(view, deleted))
           if (!cancelled) {
             setBlame(lines)
             setContent('')
@@ -576,6 +713,7 @@ export function FileViewer({ view }: { view: FileViewState }): React.JSX.Element
     blameOverrideRef,
     editing,
     ignoreWs,
+    deleted,
     source.type,
     source.type === 'commit' ? source.hash : source.type === 'stash' ? source.sha : source.type === 'wip' ? source.staged : ''
   ])
@@ -680,6 +818,42 @@ export function FileViewer({ view }: { view: FileViewState }): React.JSX.Element
     return () => cancelAnimationFrame(id)
   }, [searchRe, content, mode, file, findOpen])
 
+  // Which hunk actions fit the diff on screen. With whitespace ignored they still
+  // work: the patch is applied matching whitespace loosely (see applyHunkPatch),
+  // so they do what the visible diff shows. None for an untracked working file
+  // (no index version to stage against hunk by hunk — stage the file), and none
+  // for a conflicted file, whose combined diff (`diff --cc`) `git apply` cannot
+  // read — resolve it in the conflict view instead.
+  // From the moment a hunk action is sent until it has landed, the diff on
+  // screen is about to change: its actions stay in place but wait.
+  const [hunkPending, setHunkPending] = useState(false)
+  const isCombinedDiff = !!content && /^diff --cc /m.test(content)
+  const hunkActions = useMemo<HunkAction[]>(() => {
+    if (isCombinedDiff) return []
+    const action = (kind: HunkActionKind): HunkAction => ({
+      id: kind,
+      hunkLabel: t(HUNK_LABELS[kind].hunk),
+      linesLabel: (n) => interp(t(HUNK_LABELS[kind].lines), { n }),
+      lineLabel: t(HUNK_LABELS[kind].line),
+      reverse: kind !== 'stage' && kind !== 'apply',
+      danger: kind === 'discard',
+      run: (patch) =>
+        void repoActions
+          .applyHunk(repoPath, patch, kind, ignoreWs, () => setHunkPending(true))
+          .then(() => {
+            setHunkPending(false)
+            setRefreshKey((k) => k + 1)
+          })
+    })
+    if (source.type === 'wip' && !source.untracked) {
+      return source.staged ? [action('unstage')] : [action('stage'), action('discard')]
+    }
+    if (source.type === 'commit') return [action('revert')]
+    // A stash's untracked files diff as new files; applying creates the file.
+    if (source.type === 'stash') return [action('apply')]
+    return []
+  }, [ignoreWs, isCombinedDiff, source, repoPath, t])
+
   const sourceChip =
     source.type === 'commit' ? (
       <span className="fv-chip commit">{source.hash.slice(0, 7)}</span>
@@ -699,6 +873,11 @@ export function FileViewer({ view }: { view: FileViewState }): React.JSX.Element
           <strong>{file.split('/').pop()}</strong>
         </span>
         {sourceChip}
+        {deleted && (
+          <span className="fv-chip deleted" title={t('fileViewer.chipDeletedTitle')}>
+            {t('fileViewer.chipDeleted')}
+          </span>
+        )}
         <div className="fv-modes">
           {modes.map((m) => (
             <button
@@ -727,6 +906,16 @@ export function FileViewer({ view }: { view: FileViewState }): React.JSX.Element
             onClick={() => void runExplain()}
           >
             {explaining ? <Loader2 size={13} className="spin" /> : <Sparkles size={13} />} {t('explain.action')}
+          </button>
+        )}
+        {editableFile && aiEnabled && mode === 'file' && !editing && !maskOn && (
+          <button
+            className="btn ghost small fv-ai-edit-btn"
+            disabled={aiEditing}
+            title={t('fileViewer.aiEditTitle')}
+            onClick={beginAiEdit}
+          >
+            {aiEditing ? <Loader2 size={13} className="spin" /> : <Wand2 size={13} />} {t('fileViewer.aiEdit')}
           </button>
         )}
         {permalink && (
@@ -833,7 +1022,7 @@ export function FileViewer({ view }: { view: FileViewState }): React.JSX.Element
         )}
 
         {!error && mode === 'preview' && pvKind && (
-          <PreviewPane repoPath={repoPath} file={file} gitRef={sourceRef(view)} kind={pvKind} />
+          <PreviewPane repoPath={repoPath} file={file} gitRef={sourceRef(view, deleted)} kind={pvKind} />
         )}
 
         {!error && imgDiff !== null && mode === 'diff' && (
@@ -857,19 +1046,10 @@ export function FileViewer({ view }: { view: FileViewState }): React.JSX.Element
             highlightLayers={layers}
             maskValues={maskOn}
             ignoreWs={ignoreWs}
+            repoPath={repoPath}
             onToggleIgnoreWs={() => setIgnoreWs((v) => !v)}
-            onStageHunk={
-              source.type === 'wip' && !source.staged && !source.untracked
-                ? async (patch) => {
-                    try {
-                      await gitApi.stagePatch(repoPath, patch)
-                      setRefreshKey((k) => k + 1)
-                    } catch (err) {
-                      toast('error', err instanceof Error ? err.message : String(err))
-                    }
-                  }
-                : undefined
-            }
+            hunkActions={hunkActions}
+            busy={hunkPending}
           />
         )}
 
@@ -948,6 +1128,35 @@ export function FileViewer({ view }: { view: FileViewState }): React.JSX.Element
                 })}
               </div>
               {showMinimap && <FileMinimap lines={fileLines} gutterByLine={gutterByLine} scrollRef={bodyRef} />}
+              {aiEditSel && !maskOn && (
+                <div className="fv-ai-edit-bar">
+                  <Wand2 size={13} />
+                  <span className="fv-ai-edit-range">
+                    {interp(t('fileViewer.aiEditRange'), { a: aiEditSel.start, b: aiEditSel.end })}
+                  </span>
+                  <input
+                    className="fv-ai-edit-input"
+                    autoFocus
+                    value={aiEditPrompt}
+                    placeholder={t('fileViewer.aiEditPrompt')}
+                    onChange={(e) => setAiEditPrompt(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') void runAiEdit()
+                      else if (e.key === 'Escape') setAiEditSel(null)
+                    }}
+                  />
+                  <button
+                    className="btn small"
+                    disabled={aiEditing || !aiEditPrompt.trim()}
+                    onClick={() => void runAiEdit()}
+                  >
+                    {aiEditing && <Loader2 size={12} className="spin" />} {t('fileViewer.aiEditApply')}
+                  </button>
+                  <button className="btn ghost small" onClick={() => setAiEditSel(null)}>
+                    {t('common.cancel')}
+                  </button>
+                </div>
+              )}
             </>
           )
         })()}

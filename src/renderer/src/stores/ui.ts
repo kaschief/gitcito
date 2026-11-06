@@ -2,6 +2,7 @@ import { create } from 'zustand'
 import type { ReactNode } from 'react'
 import type { CiState, DivergedStrategy, KeychainReason, ResetStrategy } from '../../../shared/types'
 import type { WorkspaceCandidate } from '../lib/workspacePlan'
+import { touchMru } from '../lib/repoSwitcher'
 
 export type CiFilter = 'all' | CiState
 
@@ -24,6 +25,19 @@ export interface MenuItem {
   onClick?: () => void
   /** Nested items — renders a flyout submenu on hover instead of a click action. */
   submenu?: MenuItem[]
+  /** Draws the row as Finder-style colour dots instead of a label: one click picks a colour. */
+  swatches?: MenuSwatches
+}
+
+export interface MenuSwatches {
+  colors: string[]
+  /** Ringed as the one in use. */
+  current?: string
+  /** Names the row for screen readers. */
+  label: string
+  /** Names each dot, for its tooltip and screen readers. */
+  nameOf: (color: string) => string
+  onPick: (color: string) => void
 }
 
 export interface ContextMenuState {
@@ -61,6 +75,8 @@ export type ModalSpec =
       confirmLabel?: string
       autoFocusConfirm?: boolean
       onConfirm: () => void
+      /** Runs when the dialog closes any other way: Cancel, Esc, ✕, or another dialog replacing it. */
+      onCancel?: () => void
       secondaryLabel?: string
       secondaryDanger?: boolean
       onSecondary?: () => void
@@ -91,6 +107,20 @@ export type ModalSpec =
       name: string
       url: string
       pushUrl?: string
+    }
+  | {
+      kind: 'add-worktree'
+      path: string
+      repoName: string
+      /** Currently checked-out branch — the default base. */
+      current: string
+      locals: { name: string; isCurrent: boolean }[]
+      /** Branches already checked out in some worktree — cannot be reused. */
+      busyBranches: string[]
+      /** Registered worktree folders — used to warn when one is picked again. */
+      worktreePaths: string[]
+      /** Suggested folder for a branch — follows the repo's existing convention. */
+      suggestDir: (branch: string) => string
     }
   | {
       kind: 'diverged-checkout'
@@ -131,6 +161,8 @@ export type ModalSpec =
       onReset: (mode: 'soft' | 'mixed' | 'hard') => void
     }
   | { kind: 'local-ci'; repoPath: string; rev?: string }
+  /** Name a new group and pick its colour in one go. */
+  | { kind: 'new-group'; onCreate: (name: string, color: string) => void }
   | { kind: 'keychain-consent'; reason: KeychainReason; adopted?: boolean }
   | { kind: 'range-diff'; repoPath: string; branch: string; initialOld?: string }
   | { kind: 'absorb'; repoPath: string }
@@ -197,8 +229,9 @@ export type ModalSpec =
 
 export type FileViewSource =
   | { type: 'wip'; staged: boolean; untracked: boolean }
-  | { type: 'commit'; hash: string }
-  | { type: 'stash'; sha: string; untracked: boolean }
+  // `deleted`: the change removed the file, so the views show it as it was before.
+  | { type: 'commit'; hash: string; deleted?: boolean }
+  | { type: 'stash'; sha: string; untracked: boolean; deleted?: boolean }
   // A plain working-tree file opened from the project tree. Read from disk
   // (no git ref) and editable in place.
   | { type: 'tree' }
@@ -282,6 +315,12 @@ interface UIState {
   toasts: Toast[]
   /** Cmd/Ctrl+K command palette — fuzzy jump to branches, commits, files, actions. */
   commandPaletteOpen: boolean
+  /** Cmd/Ctrl+J repository switcher. */
+  repoSwitcherOpen: boolean
+  /** Open repositories, most recently shown first — session-only, for the switcher. */
+  repoMru: string[]
+  /** A search the switcher hands to the Repositories page; it takes it once. */
+  repositoriesQuery: string | null
   /**
    * Mission control is showing. It is a view, not a tab: the title-bar button
    * swaps the whole workspace body for the dashboard and swaps it back, so no
@@ -349,6 +388,9 @@ interface UIState {
   setCommandPalette(open: boolean): void
   setMissionOpen(open: boolean): void
   toggleCommandPalette(): void
+  setRepoSwitcher(open: boolean): void
+  touchRepoMru(path: string): void
+  setRepositoriesQuery(query: string | null): void
   setGithubUnread(n: number): void
   toast(kind: Toast['kind'], message: string, opts?: { repoPath?: string }): void
   dismissToast(id: number): void
@@ -394,6 +436,9 @@ export const useUIStore = create<UIState>((set, get) => ({
   modal: null,
   toasts: [],
   commandPaletteOpen: false,
+  repoSwitcherOpen: false,
+  repoMru: [],
+  repositoriesQuery: null,
   missionOpen: false,
   githubUnread: 0,
   terminalOpenByRepo: {},
@@ -432,6 +477,12 @@ export const useUIStore = create<UIState>((set, get) => ({
   setCommandPalette: (commandPaletteOpen) => set({ commandPaletteOpen }),
   setMissionOpen: (missionOpen) => set({ missionOpen }),
   toggleCommandPalette: () => set({ commandPaletteOpen: !get().commandPaletteOpen }),
+  setRepoSwitcher: (repoSwitcherOpen) => set({ repoSwitcherOpen }),
+  setRepositoriesQuery: (repositoriesQuery) => set({ repositoriesQuery }),
+  touchRepoMru: (path) => {
+    const next = touchMru(get().repoMru, path)
+    if (next !== get().repoMru) set({ repoMru: next })
+  },
   setGithubUnread: (githubUnread) => set({ githubUnread }),
 
   toast: (kind, message, opts) => {

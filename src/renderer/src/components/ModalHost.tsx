@@ -3,7 +3,10 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { X, Globe, Github, Gitlab, Cloud, Server, Loader2, Search, Lock, FolderGit2, Folder, Plus, Check, ChevronDown, ChevronRight, RefreshCw, Sparkles, GitMerge, ArrowUpFromLine, TextCursorInput } from 'lucide-react'
 import { useUIStore, type ModalSpec } from '../stores/ui'
 import { useSettingsStore, GROUP_COLORS } from '../stores/settings'
+import { pickGroupColor } from '../lib/groupColors'
+import { colorName } from './colorMenu'
 import { hostingApi, gitApi, shellApi, aiApi } from '../infrastructure/api'
+import { chooseRepositories } from '../openRepositories'
 import { repoActions } from '../stores/repo'
 import {
   defaultProfile,
@@ -68,6 +71,7 @@ import { ErrorBoundary } from './ErrorBoundary'
 import { CheatsheetModal } from './CheatsheetModal'
 import { CreateIssueModal } from './CreateIssueModal'
 import { RepoSettingsModal } from './RepoSettingsModal'
+import { BranchFieldPicker } from './BranchFieldPicker'
 import { useT, interp } from '../i18n'
 import { defaultOptionIndex, isPickInput, normalizeOptions } from '../lib/launchInputs'
 import { AIAccountsNotice } from './AIAccountsNotice'
@@ -196,6 +200,63 @@ function GroupColorModal({ spec }: { spec: Extract<ModalSpec, { kind: 'group-col
       <div className="modal-actions">
         <button className="btn ghost" onClick={closeModal}>{t('common.cancel')}</button>
         <button className="btn primary" disabled={!custom} onClick={() => select(custom)}>{t('modal.apply')}</button>
+      </div>
+    </>
+  )
+}
+
+function NewGroupModal({ spec }: { spec: Extract<ModalSpec, { kind: 'new-group' }> }): React.JSX.Element {
+  const t = useT()
+  const closeModal = useUIStore((s) => s.closeModal)
+  const tabs = useSettingsStore((s) => s.settings.tabs)
+  const [name, setName] = useState('')
+  // Preselected so Enter alone still works; one no open group already wears.
+  const [color, setColor] = useState(() => pickGroupColor(tabs.map((x) => (x.kind === 'group' ? x.color : undefined))))
+
+  const submit = (): void => {
+    const trimmed = name.trim()
+    if (!trimmed) return
+    closeModal()
+    spec.onCreate(trimmed, color)
+  }
+
+  return (
+    <>
+      <h3>{t('welcome.newGroup')}</h3>
+      <label className="modal-label">{t('welcome.groupName')}</label>
+      <input
+        autoFocus
+        className="modal-input"
+        value={name}
+        placeholder={t('welcome.groupNamePlaceholder')}
+        onChange={(e) => setName(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') submit()
+          if (e.key === 'Escape') closeModal()
+        }}
+      />
+      <label className="modal-label">{t('modal.color')}</label>
+      <div className="group-color-swatches compact" role="radiogroup" aria-label={t('modal.color')}>
+        {GROUP_COLORS.map((c) => (
+          <button
+            key={c}
+            className={`group-color-swatch ${color === c ? 'selected' : ''}`}
+            style={{ background: c }}
+            role="radio"
+            aria-checked={color === c}
+            aria-label={colorName(c)}
+            title={colorName(c)}
+            onClick={() => setColor(c)}
+          />
+        ))}
+      </div>
+      <div className="modal-actions">
+        <button className="btn ghost" onClick={closeModal}>
+          {t('common.cancel')}
+        </button>
+        <button className="btn primary" disabled={!name.trim()} onClick={submit}>
+          {t('common.create')}
+        </button>
       </div>
     </>
   )
@@ -362,7 +423,7 @@ function CreateBranchModal({ spec }: { spec: Extract<ModalSpec, { kind: 'create-
     if (!description.trim() || aiBusy) return
     setAiBusy(true)
     try {
-      const suggested = await aiApi.generateBranchName(description.trim(), aiFor('commit'), {
+      const suggested = await aiApi.generateBranchName(description.trim(), { ...aiFor('commit'), cliCwd: spec.path }, {
         username: profile.gitName || undefined
       })
       if (suggested.trim()) setName(suggested.trim())
@@ -939,6 +1000,149 @@ function ProviderCreateForm({
   )
 }
 
+function AddWorktreeModal({ spec }: { spec: Extract<ModalSpec, { kind: 'add-worktree' }> }): React.JSX.Element {
+  const t = useT()
+  const closeModal = useUIStore((s) => s.closeModal)
+  const [base, setBase] = useState(spec.current)
+  const [newBranch, setNewBranch] = useState('')
+  // null = the folder field still follows the suggested path. The Browse button
+  // fills `browseParent`; a typed value fills `dirOverride`.
+  const [dirOverride, setDirOverride] = useState<string | null>(null)
+  const [browseParent, setBrowseParent] = useState<string | null>(null)
+  const [openAfter, setOpenAfter] = useState(true)
+
+  const parent = spec.path.slice(0, spec.path.length - spec.repoName.length - 1)
+  const creatingNew = newBranch.trim().length > 0
+  const effectiveBranch = creatingNew ? newBranch.trim() : base
+  const suggestedDir = browseParent
+    ? `${browseParent}/${effectiveBranch}`
+    : spec.suggestDir(effectiveBranch)
+  const finalDir = (dirOverride ?? suggestedDir).trim()
+  const baseBusy = spec.busyBranches.includes(base)
+  const branchClash = spec.locals.some((b) => b.name === effectiveBranch) && creatingNew
+  const dirUsed = spec.worktreePaths.some(
+    (p) => p.replace(/\\/g, '/').replace(/\/+$/, '') === resolvedDir(finalDir).replace(/\\/g, '/').replace(/\/+$/, '')
+  )
+  const invalid = !finalDir || (!creatingNew && baseBusy) || branchClash || dirUsed
+
+  // openRepoTab needs an absolute path — resolve ../ against the repo parent.
+  function resolvedDir(d: string): string {
+    if (/^([a-zA-Z]:[\\/]|\\\\|\/)/.test(d)) return d
+    const out: string[] = []
+    for (const seg of `${parent}/${d}`.split(/[\\/]+/)) {
+      if (seg === '..') out.pop()
+      else if (seg && seg !== '.') out.push(seg)
+    }
+    return out.join('/')
+  }
+
+  const browse = async (): Promise<void> => {
+    const picked = await window.api.selectDirectory(t('modal.worktreeBrowseTitle'))
+    if (picked) {
+      // The chosen folder is the PARENT — the worktree lands in a new
+      // branch-named folder inside it. Picking an existing folder directly is
+      // the classic "already exists" fatal.
+      setBrowseParent(picked.replace(/[\\/]+$/, ''))
+      setDirOverride(null)
+    }
+  }
+
+  const indexCodegraph = useSettingsStore((s) => s.settings.codegraphIndexWorktrees === true)
+  const updateSettings = useSettingsStore((s) => s.update)
+
+  const submit = (): void => {
+    if (invalid) return
+    closeModal()
+    void repoActions
+      .worktreeAdd(spec.path, finalDir, effectiveBranch, creatingNew, creatingNew ? base : undefined)
+      .then((ok) => {
+        if (!ok || !openAfter) return
+        useSettingsStore
+          .getState()
+          .openRepoTab({ path: resolvedDir(finalDir), name: `${spec.repoName} · ${effectiveBranch}` })
+      })
+  }
+
+  const onKey = (e: React.KeyboardEvent): void => {
+    if (e.key === 'Enter') submit()
+    if (e.key === 'Escape') closeModal()
+  }
+
+  return (
+    <>
+      <h3 className="modal-title-row">
+        <FolderGit2 size={17} /> {t('sidebar.addWorktree')}
+      </h3>
+
+      <label className="modal-label">{t('modal.worktreeBaseBranch')}</label>
+      <BranchFieldPicker
+        branches={spec.locals}
+        value={base}
+        onChange={setBase}
+        ariaLabel={t('modal.worktreeBaseBranch')}
+      />
+
+      <label className="modal-label">{t('modal.worktreeNewBranch')}</label>
+      <input
+        autoFocus
+        className="modal-input"
+        value={newBranch}
+        placeholder={t('modal.branchNamePlaceholder')}
+        onChange={(e) => setNewBranch(e.target.value)}
+        onKeyDown={onKey}
+      />
+      {creatingNew ? (
+        <div className="modal-hint">{interp(t('modal.worktreeNewBranchFrom'), { base })}</div>
+      ) : (
+        <div className={`modal-hint ${baseBusy ? 'danger' : ''}`}>
+          {baseBusy ? interp(t('modal.worktreeBranchBusy'), { base }) : interp(t('modal.worktreeNewBranchHint'), { base })}
+        </div>
+      )}
+      {branchClash && <div className="modal-hint danger">{interp(t('modal.worktreeBranchClash'), { branch: effectiveBranch })}</div>}
+
+      <label className="modal-label">{t('modal.worktreeFolder')}</label>
+      <div className="repo-org-row">
+        <input
+          className="modal-input"
+          value={dirOverride ?? suggestedDir}
+          onChange={(e) => {
+            setDirOverride(e.target.value)
+            setBrowseParent(null)
+          }}
+          onKeyDown={onKey}
+        />
+        <button className="btn ghost" onClick={() => void browse()} type="button">
+          {t('modal.browse')}
+        </button>
+      </div>
+      {dirUsed && <div className="modal-hint danger">{t('modal.worktreeDirUsed')}</div>}
+
+      <label className="clone-partial">
+        <input type="checkbox" checked={openAfter} onChange={(e) => setOpenAfter(e.target.checked)} />
+        <span>{t('modal.worktreeOpenAfter')}</span>
+      </label>
+
+      <label className="clone-partial">
+        <input
+          type="checkbox"
+          checked={indexCodegraph}
+          onChange={(e) => updateSettings((s) => ({ ...s, codegraphIndexWorktrees: e.target.checked }))}
+        />
+        <span>{t('modal.worktreeIndexCodegraph')}</span>
+      </label>
+
+      <div className="modal-actions">
+        <button className="btn ghost" onClick={closeModal} type="button">
+          {t('common.cancel')}
+        </button>
+        <button className="btn primary" disabled={invalid} onClick={submit} type="button">
+          {t('common.add')}
+        </button>
+      </div>
+    </>
+  )
+}
+
 function AddRemoteModal({ spec }: { spec: Extract<ModalSpec, { kind: 'addRemote' }> }): React.JSX.Element {
   const t = useT()
   const closeModal = useUIStore((s) => s.closeModal)
@@ -1415,6 +1619,17 @@ function CloneModal({ spec }: { spec: Extract<ModalSpec, { kind: 'clone' }> }): 
 function ConfirmModal({ spec }: { spec: Extract<ModalSpec, { kind: 'confirm' }> }): React.JSX.Element {
   const t = useT()
   const closeModal = useUIStore((s) => s.closeModal)
+  // Every way out but the two buttons that act (Cancel, Esc, ✕, a click
+  // outside, another confirm taking this one's place) ends this effect, so a
+  // caller waiting on the answer always gets one. StrictMode also runs this
+  // cleanup on a dialog still showing; only one that has left the store counts.
+  const answered = useRef(false)
+  useEffect(() => {
+    answered.current = false
+    return () => {
+      if (!answered.current && useUIStore.getState().modal !== spec) spec.onCancel?.()
+    }
+  }, [spec])
   return (
     <>
       <h3>{spec.title}</h3>
@@ -1427,6 +1642,7 @@ function ConfirmModal({ spec }: { spec: Extract<ModalSpec, { kind: 'confirm' }> 
           <button
             className={`btn ${spec.secondaryDanger ? 'danger' : 'ghost'}`}
             onClick={() => {
+              answered.current = true
               closeModal()
               spec.onSecondary?.()
             }}
@@ -1438,6 +1654,7 @@ function ConfirmModal({ spec }: { spec: Extract<ModalSpec, { kind: 'confirm' }> 
           autoFocus={spec.autoFocusConfirm}
           className={`btn ${spec.danger ? 'danger' : 'primary'}`}
           onClick={() => {
+            answered.current = true
             closeModal()
             spec.onConfirm()
           }}
@@ -1644,14 +1861,14 @@ function LauncherModal({ spec }: { spec: Extract<ModalSpec, { kind: 'launcher' }
     : undefined
 
   const openRepo = async (): Promise<void> => {
-    const path = await window.api.selectDirectory()
-    if (!path) return
-    const repo = { path, name: path.split('/').pop() ?? path }
+    const inGroup = (path: string): boolean => !!groupTab?.repos.some((r) => r.path === path)
+    const repos = await chooseRepositories(spec.groupId ? inGroup : undefined)
+    if (!repos.length) return
     if (spec.groupId) {
-      addRepoToGroup(spec.groupId, repo)
+      for (const repo of repos) addRepoToGroup(spec.groupId, repo)
     } else {
       closeModal()
-      openRepoTab(repo)
+      for (const repo of repos) openRepoTab(repo)
     }
   }
 
@@ -1679,14 +1896,7 @@ function LauncherModal({ spec }: { spec: Extract<ModalSpec, { kind: 'launcher' }
 
   const createGroup = (): void => {
     closeModal()
-    openModal({
-      kind: 'input',
-      title: t('welcome.newGroup'),
-      label: t('welcome.groupName'),
-      placeholder: t('welcome.groupNamePlaceholder'),
-      submitLabel: t('common.create'),
-      onSubmit: (name) => createGroupTab(name)
-    })
+    openModal({ kind: 'new-group', onCreate: (name, color) => createGroupTab(name, color) })
   }
 
   const items: LauncherItem[] = spec.groupId && groupTab
@@ -1865,6 +2075,7 @@ export function ModalHost(): React.JSX.Element {
             {modal.kind === 'diverged-checkout' && <DivergedCheckoutModal spec={modal} />}
             {modal.kind === 'ahead-checkout' && <AheadCheckoutModal spec={modal} />}
             {modal.kind === 'addRemote' && <AddRemoteModal spec={modal} />}
+            {modal.kind === 'add-worktree' && <AddWorktreeModal spec={modal} />}
             {modal.kind === 'editRemote' && <EditRemoteModal spec={modal} />}
             {modal.kind === 'clone' && <CloneModal spec={modal} />}
             {modal.kind === 'settings' && <SettingsPanel initialPage={modal.page} initialThemeTab={modal.themeTab} />}
@@ -1904,6 +2115,7 @@ export function ModalHost(): React.JSX.Element {
               <AIPRReview repoPath={modal.repoPath} prTitle={modal.prTitle} sourceBranch={modal.sourceBranch} targetBranch={modal.targetBranch} />
             )}
             {modal.kind === 'group-color' && <GroupColorModal spec={modal} />}
+            {modal.kind === 'new-group' && <NewGroupModal spec={modal} />}
             {modal.kind === 'scan-workspaces' && <ScanWorkspacesModal spec={modal} />}
             {modal.kind === 'reflog' && <ReflogModal repoPath={modal.repoPath} />}
             {modal.kind === 'code-search' && <CodeSearchModal repoPath={modal.repoPath} query={modal.query} />}

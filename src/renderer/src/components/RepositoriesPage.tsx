@@ -13,6 +13,7 @@ import {
   Search,
   X
 } from 'lucide-react'
+import { colorMenuItems } from './colorMenu'
 import { GROUP_COLORS, useSettingsStore } from '../stores/settings'
 import { useReposStore } from '../stores/repos'
 import { repoActions, type PullMode } from '../stores/repo'
@@ -89,6 +90,13 @@ export function RepositoriesPage(): React.JSX.Element {
   const chosenColors = settings.repoSectionColors ?? {}
 
   const [query, setQuery] = useState('')
+  // The Cmd/Ctrl+J switcher hands over a search it could not answer from open tabs.
+  const handedQuery = useUIStore((s) => s.repositoriesQuery)
+  useEffect(() => {
+    if (handedQuery === null) return
+    setQuery(handedQuery)
+    useUIStore.getState().setRepositoriesQuery(null)
+  }, [handedQuery])
   const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
   const [wip, setWip] = useState(false)
   const [pulses, setPulses] = useState<Record<string, RepoPulse>>({})
@@ -247,21 +255,13 @@ export function RepositoriesPage(): React.JSX.Element {
     setPulses({})
   }
 
-  // The colour picker is the same modal group tabs and folders use — it takes
-  // a current value and a setter and knows nothing about what it colours.
+  // The same colour row group tabs and folders use — it takes a current value
+  // and a setter and knows nothing about what it colours.
   const openSectionMenu = (e: React.MouseEvent, key: string, current: string): void => {
     e.stopPropagation()
     const rect = e.currentTarget.getBoundingClientRect()
     openContextMenu(rect.left, rect.bottom, [
-      {
-        label: t('repos.sectionColor'),
-        onClick: () =>
-          openModal({
-            kind: 'group-color',
-            current,
-            onSelect: (color) => setRepoSectionColor(key, color)
-          })
-      },
+      ...colorMenuItems(current, (color) => setRepoSectionColor(key, color)),
       // Only offered once a section has been overridden: with no stored colour
       // there is nothing to reset, since the default is what is already showing.
       ...(key in chosenColors

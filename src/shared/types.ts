@@ -603,6 +603,8 @@ export interface PullRequest {
   ci?: CiState
   /** "2 passed · 1 failing", for the row's tooltip. */
   ciSummary?: string
+  /** owner/repo the head branch lives in (GitHub), to tell a fork's PRs apart. */
+  headRepo?: string
 }
 
 export type HostingProvider = 'github' | 'azure' | 'gitlab' | 'bitbucket' | null
@@ -952,7 +954,7 @@ export type AIProvider =
 export type AITransport = 'openai' | 'anthropic' | 'cli'
 
 /** A locally installed agent CLI that answers using its own signed-in session. */
-export type AICliBinary = 'claude' | 'gemini' | 'codex'
+export type AICliBinary = 'claude' | 'gemini' | 'codex' | 'devin'
 
 export interface AIProviderPreset {
   id: AIProvider
@@ -1160,6 +1162,10 @@ export interface AIConfig {
   /** `cli` transport only. */
   cli?: AICliBinary
   cliPath?: string
+  /** `cli` transport only: working directory for the call — the repo the
+   *  feature is about, so agent CLIs (devin, claude, codex) can read its files.
+   *  Renderer stamps it per call; never persisted with the account. */
+  cliCwd?: string
   commitStyle: CommitStyle
   explainStyle: ExplainStyle
   conflictStyle: ConflictStyle
@@ -1407,6 +1413,21 @@ export interface HoverExplainRequest {
   token: string
   line: number
   lines: NumberedLine[]
+}
+
+/** A scoped inline-edit request: replace `startLine..=endLine` (1-based,
+ * inclusive) of `file` to satisfy `instruction`. */
+export interface EditSelectionRequest {
+  file: string
+  lang: string
+  startLine: number
+  endLine: number
+  /** The exact text of the selected lines. */
+  code: string
+  /** Neighbouring lines for context only — the model must not re-emit them. */
+  contextBefore: string
+  contextAfter: string
+  instruction: string
 }
 
 /** A short explanation of a hovered token, citing lines from the window it saw. */
@@ -2044,6 +2065,16 @@ export interface InfoEntry {
 
 /** What triggered a WIP snapshot. */
 export type SnapshotKind = 'auto' | 'manual' | 'guard'
+
+/**
+ * The changes a discard is about to throw away, saved so Undo can put them back
+ * exactly: what was staged (the index as a tree) and what was on disk (the
+ * working tree, untracked files included). Plain git objects, no ref.
+ */
+export interface SavedWork {
+  index: string
+  worktree: string
+}
 
 /** A saved WIP snapshot (a commit of the whole working tree kept under refs/gitcito/wip). */
 export interface SnapshotInfo {
@@ -2810,6 +2841,8 @@ export interface Workspace {
   sourcePath?: string
 }
 
+export type TabRepoLabel = 'both' | 'name' | 'image'
+
 export interface AppSettings {
   profiles: Profile[]
   activeProfileId: string
@@ -2824,6 +2857,13 @@ export interface AppSettings {
    * workspaces cannot diverge.
    */
   repoAliases: Record<string, string>
+  /** Tab images keyed by canonical repository path; each value is a path
+   *  relative to that repository's root. Relative so the picture follows the
+   *  repository's own files rather than a location on this machine. */
+  repoImages?: Record<string, string>
+  /** What a repository tab shows. A repository without a loadable image always
+   *  shows its name, whatever this says. Absent means `both`. */
+  tabRepoLabel?: TabRepoLabel
   tabs: TabState[]
   activeTabId: string | null
   /** Saved tab layouts. Always has at least one ("Default"); the active one's
@@ -2916,6 +2956,8 @@ export interface AppSettings {
   snapshotGuard: boolean
   /** Local CI via `act` (optional integration; needs act + Docker installed). */
   localCiEnabled: boolean
+  /** Run `codegraph init` on new worktrees when the parent repo is indexed (opt-in). */
+  codegraphIndexWorktrees: boolean
   /** Mask secret values (KEY=••••) in .env/key files in the diff & file viewer. */
   maskSecrets: boolean
   /** File view (working-tree files only): a colored bar next to lines changed
@@ -3319,6 +3361,7 @@ export function defaultSettings(): AppSettings {
     wipSnapshotMinutes: 15,
     snapshotGuard: true,
     localCiEnabled: false,
+    codegraphIndexWorktrees: false,
     maskSecrets: true,
     showChangeGutter: true,
     showMinimap: true,

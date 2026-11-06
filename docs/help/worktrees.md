@@ -17,8 +17,21 @@ stashing.
 - Create and remove worktrees from the sidebar. **Double-click** one to open it
   as its own tab; right-click for *Open worktree*, *Reveal in folder* and
   removal.
+- The WORKTREES section's **+** opens the add-worktree dialog: pick the base
+  branch, optionally name a new branch to create from it (leave empty to check
+  out the base itself), choose or type the folder — suggested as a sibling
+  `repo--branch` — and decide whether to open the worktree as a tab right away.
 - Right-click any local branch → **Open in a worktree** to spin one up in a
   sibling folder and open it as a tab.
+- If you tick **Index the worktree with codegraph** in the dialog (off by
+  default), the repository is indexed with codegraph (a `.codegraph/` folder)
+  and the CLI is on PATH, a new worktree is indexed in the background too — agent
+  sessions opened inside it get the same code intelligence without a manual
+  `codegraph init`.
+- The worktree's `.git` file is written with a relative `gitdir:` path instead
+  of the absolute drive-letter path git stamps by default, so the tree keeps
+  working from shells that cannot parse `E:/…` — WSL terminals and the agents
+  that run in them.
 - A branch can live in only one worktree at a time, so checking out a branch
   another worktree already holds cannot work — git refuses with *already used by
   worktree at …*. Gitcito takes you there instead: the branch's menu reads *Go

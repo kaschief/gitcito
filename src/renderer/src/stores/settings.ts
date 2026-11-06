@@ -1,4 +1,5 @@
 import { create } from 'zustand'
+import { GROUP_COLORS, pickGroupColor } from '../lib/groupColors'
 import { migrateAIConfig, needsAccountsNotice, resolveAI } from '../../../shared/aiAccounts'
 import {
   defaultProfile,
@@ -13,6 +14,7 @@ import {
   type RepoFolder,
   type RepoLayout,
   type RepoRef,
+  type RepoTab,
   type RepoBookmark,
   type RepoTodo,
   type TodoStatus,
@@ -30,9 +32,10 @@ import {
   updateFolder
 } from '../lib/repoFolders'
 import { reposApi, settingsApi } from '../infrastructure/api'
-import { repathRepoSettings } from '../lib/repoRepath'
+import { repathRepoSettings, repathRepoTabs } from '../lib/repoRepath'
 import type { WorkspaceCandidate } from '../lib/workspacePlan'
 import { useUIStore } from './ui'
+import { focusOpenRepo } from '../lib/tabLookup'
 import { applyRepoAlias, canonicalRepoPath, migrateRepoAliases, repoDisplayName } from '../lib/repoAlias'
 import { sortBookmarks } from '../lib/bookmarks'
 import { planAttach, planClose } from '../lib/tabPages'
@@ -56,11 +59,10 @@ const uid = (): string => Math.random().toString(36).slice(2, 10)
 // (an unchanged `activeTabId` renders no effect, so the click looks dead).
 const leaveMission = (): void => useUIStore.getState().setMissionOpen(false)
 
-export const GROUP_COLORS = [
-  '#6366f1', '#ec4899', '#f59e0b', '#10b981',
-  '#3b82f6', '#8b5cf6', '#ef4444', '#14b8a6',
-  '#f97316', '#06b6d4'
-]
+export { GROUP_COLORS }
+
+const groupColors = (tabs: TabState[]): (string | undefined)[] =>
+  tabs.map((t) => (t.kind === 'group' ? t.color : undefined))
 
 // Map pre-dynamic-theme ids onto the new merged light/dark theme ids.
 const LEGACY_APP_THEME_IDS: Record<string, string> = {
@@ -240,7 +242,7 @@ interface SettingsState {
   closeRepoPage(tabId: string, index: number): void
   /** Replace an existing page tab's content in place (e.g. prev/next release). */
   navigatePageTab(tabId: string, page: PageContent): void
-  createGroupTab(name: string): void
+  createGroupTab(name: string, color?: string): void
   addRepoToGroup(tabId: string, repo: RepoRef): void
   removeRepoFromGroup(tabId: string, path: string): void
   renameRepoInGroup(tabId: string, path: string, newName: string): void
@@ -251,7 +253,7 @@ interface SettingsState {
    *  colours are deleted rather than stored as empty, so `in` is enough to ask
    *  whether a section has one. */
   setRepoSectionColor(key: string, color: string | null): void
-  /** A repo that moved keeps its alias, profile binding and star: all three are
+  /** A repo that moved keeps its tabs, alias, profile binding and star: all are
    *  keyed by path, so re-pointing the registry has to re-key them too. */
   repathRepo(oldPath: string, newPath: string): void
   reorderReposInGroup(tabId: string, fromPath: string, toPath: string | null): void
@@ -261,13 +263,19 @@ interface SettingsState {
    *  Repositories page is one, and closing the surface the button sits on
    *  would be a surprise. */
   closeAllRepoTabs(): void
+  /** Close every tab but this one, pages and groups included, and make it active. */
+  closeOtherTabs(keepTabId: string): void
   reopenClosedTab(): void
   setActiveTab(tabId: string): void
   renameTab(tabId: string, name: string): void
   setTabColor(tabId: string, color: string): void
   reorderTabs(fromId: string, toId: string, before: boolean): void
   moveTabIntoGroup(fromTabId: string, toGroupTabId: string): void
+  /** Turn a standalone repo tab into a new group holding it, in place. */
+  groupRepoTab(tabId: string, name: string, color?: string): void
   ejectRepoFromGroup(tabId: string, repoPath: string, insertBeforeTabId: string | null): void
+  /** Dissolve a group where it stands into one repo tab per repository. */
+  ungroupTab(tabId: string): void
   moveRepoBetweenGroups(fromTabId: string, repoPath: string, toTabId: string, insertBeforeRepoPath: string | null): void
   toggleTabCollapsed(tabId: string): void
 
@@ -543,8 +551,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   openRepoTab: (repo) => {
     leaveMission()
     get().update((s) => {
-      const existing = s.tabs.find((t) => t.kind === 'repo' && t.activeRepoPath === repo.path)
-      if (existing) return { ...s, activeTabId: existing.id }
+      const open = focusOpenRepo(s.tabs, repo.path)
+      if (open) return { ...s, ...open }
       const name = repoDisplayName(repo.path, s.repoAliases, repo.name)
       const named = { ...repo, name }
       const tab: TabState = { id: uid(), kind: 'repo', name, repos: [named], activeRepoPath: repo.path }
@@ -565,14 +573,8 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
       // Already open somewhere (standalone or inside a group) — just focus it,
       // matching by path since a repo can be renamed/moved independently.
-      const existing = s.tabs.find((t) => t.kind !== 'page' && t.repos.some((r) => r.path === path))
-      if (existing) {
-        const tabs =
-          existing.kind === 'group'
-            ? s.tabs.map((t) => (t.id === existing.id ? { ...t, activeRepoPath: path } : t))
-            : s.tabs
-        return { ...s, tabs, activeTabId: existing.id }
-      }
+      const open = focusOpenRepo(s.tabs, path)
+      if (open) return { ...s, ...open }
 
       const repo: RepoRef = { path, name: displayName }
       const recentRepos = [repo, ...s.recentRepos.filter((r) => r.path !== path)].slice(0, 8)
@@ -593,8 +595,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
           )
           return { ...s, tabs, activeTabId: existingGroup.id, recentRepos }
         }
-        const groupCount = s.tabs.filter((t) => t.kind === 'group').length
-        const color = GROUP_COLORS[groupCount % GROUP_COLORS.length]
+        const color = pickGroupColor(groupColors(s.tabs))
         const tab: TabState = { id: uid(), kind: 'group', name: groupName, repos: [repo], activeRepoPath: path, color }
         return { ...s, tabs: [tab, ...s.tabs], activeTabId: tab.id, recentRepos }
       }
@@ -683,11 +684,10 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       )
     })),
 
-  createGroupTab: (name) => {
+  createGroupTab: (name, color) => {
     leaveMission()
     return get().update((s) => {
-      const groupCount = s.tabs.filter((t) => t.kind === 'group').length
-      const color = GROUP_COLORS[groupCount % GROUP_COLORS.length]
+      color ??= pickGroupColor(groupColors(s.tabs))
       const tab: TabState = { id: uid(), kind: 'group', name, repos: [], activeRepoPath: null, color }
       return { ...s, tabs: [...s.tabs, tab], activeTabId: tab.id }
     })
@@ -695,6 +695,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
 
   addRepoToGroup: (tabId, repo) => {
     get().update((s) => {
+      // Already open in another tab or group: don't list it twice, show it.
+      const elsewhere = s.tabs.find(
+        (t) => t.id !== tabId && t.kind !== 'page' && t.repos.some((r) => r.path === repo.path)
+      )
+      if (elsewhere) return { ...s, ...focusOpenRepo(s.tabs, repo.path) }
       const named = { ...repo, name: repoDisplayName(repo.path, s.repoAliases, repo.name) }
       return {
         ...s,
@@ -751,8 +756,15 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   repathRepo: (oldPath, newPath) =>
     get().update((s) => ({
       ...s,
+      tabs: repathRepoTabs(s.tabs, oldPath, newPath),
+      workspaces: s.workspaces.map((w) => ({ ...w, tabs: repathRepoTabs(w.tabs, oldPath, newPath) })),
       ...repathRepoSettings(
-        { repoAliases: s.repoAliases, repoProfiles: s.repoProfiles, favouriteRepos: s.favouriteRepos ?? [] },
+        {
+          repoAliases: s.repoAliases,
+          repoProfiles: s.repoProfiles,
+          favouriteRepos: s.favouriteRepos ?? [],
+          repoImages: s.repoImages
+        },
         oldPath,
         newPath
       )
@@ -810,6 +822,22 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       return { ...s, tabs: keep, activeTabId: stillOpen ? s.activeTabId : (keep[0]?.id ?? null) }
     }),
 
+  closeOtherTabs: (keepTabId) =>
+    get().update((s) => {
+      if (!s.tabs.some((tab) => tab.id === keepTabId) || s.tabs.length < 2) return s
+      // Right to left, as Close all does, so ⌘⇧T restores strip order. The stack
+      // stretches to hold the whole batch, so none of it falls off the bottom.
+      let closed = 0
+      for (let i = s.tabs.length - 1; i >= 0; i--) {
+        const tab = s.tabs[i]
+        if (tab.id === keepTabId) continue
+        closedTabStack.push({ tab, idx: i })
+        closed++
+      }
+      while (closedTabStack.length > Math.max(10, closed)) closedTabStack.shift()
+      return { ...s, tabs: s.tabs.filter((tab) => tab.id === keepTabId), activeTabId: keepTabId }
+    }),
+
   reopenClosedTab: () => {
     const last = closedTabStack.pop()
     if (!last) return
@@ -860,16 +888,48 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       if (!from || from.kind !== 'repo' || !toGroup || toGroup.kind !== 'group') return s
       const repo = from.repos[0]
       if (!repo) return s
+      const alreadyThere = toGroup.repos.some((r) => r.path === repo.path)
       const tabs = s.tabs
         .filter((t) => t.id !== fromTabId)
         .map((t) =>
-          t.id === toGroupTabId && t.kind === 'group'
+          t.id === toGroupTabId && t.kind === 'group' && !alreadyThere
             ? { ...t, repos: [...t.repos, repo], activeRepoPath: t.activeRepoPath ?? repo.path }
             : t
         )
       const activeTabId = s.activeTabId === fromTabId ? toGroupTabId : s.activeTabId
       return { ...s, tabs, activeTabId }
     }),
+
+  // Converted where it stands, keeping the tab id and its open pages, so the
+  // repo does not jump to the end of the strip or lose its DevTools/wiki.
+  groupRepoTab: (tabId, name, color) =>
+    get().update((s) => {
+      color ??= pickGroupColor(groupColors(s.tabs))
+      const tabs = s.tabs.map((t): TabState =>
+        t.id === tabId && t.kind === 'repo'
+          ? { ...t, kind: 'group', name, color, activeRepoPath: t.repos[0]?.path ?? null }
+          : t
+      )
+      return { ...s, tabs }
+    }),
+
+  // Each repository keeps its own open pages, and the one in view stays in view.
+  ungroupTab: (tabId) => {
+    const group = get().settings.tabs.find((t): t is GroupTab => t.id === tabId && t.kind === 'group')
+    if (!group || group.repos.length === 0) return
+    const active = group.activePage != null ? group.pages?.[group.activePage] : undefined
+    const repoTabs = group.repos.map((repo): RepoTab => {
+      const pages = (group.pages ?? []).filter((p) => 'repoPath' in p && p.repoPath === repo.path)
+      const showing = active && pages.includes(active) && group.activeRepoPath === repo.path ? pages.indexOf(active) : null
+      return { id: uid(), kind: 'repo', name: repo.name, repos: [repo], activeRepoPath: repo.path, pages, activePage: showing }
+    })
+    const focus = repoTabs.find((t) => t.activeRepoPath === group.activeRepoPath) ?? repoTabs[0]
+    get().update((s) => ({
+      ...s,
+      tabs: s.tabs.flatMap((t) => (t.id === tabId ? repoTabs : [t])),
+      activeTabId: s.activeTabId === tabId ? focus.id : s.activeTabId
+    }))
+  },
 
   ejectRepoFromGroup: (tabId, repoPath, insertBeforeTabId) =>
     get().update((s) => {

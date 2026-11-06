@@ -67,7 +67,7 @@ git actually is.
 | | |
 |---|---|
 | **[Commit composer](docs/help/committing.md)** | Conventional, Gitmoji, Ticket, Plain… even Caveman. Co-author picker, message recall, live linter. Amend and undo from the graph menu prefill it. |
-| **[Staging](docs/help/staging.md)** | Whole files, hunks, or **individual lines**. File-list headers split the count by modified / added / deleted. |
+| **[Staging](docs/help/staging.md)** | Whole files, hunks, or **individual lines** — and the same precision to [unstage, discard, revert or apply](docs/help/staging.md#hunk-and-line-actions) one hunk or a few lines, each undoable. File-list headers split the count by modified / added / deleted. |
 | **[Conflict resolver](docs/help/conflicts.md)** | Three panes, per-line picking, a conflict-by-conflict navigator, editable output. |
 | **[Xcode project merge](docs/help/conflicts.md)** | A `project.pbxproj` conflict merged by object identity instead of by line — and refused, by name, where a build setting genuinely diverged. |
 | **[Lockfile conflicts](docs/help/conflicts.md)** | `Podfile.lock`, `Package.resolved`, `yarn.lock` and friends: take a side, and the command that regenerates it, instead of merging a graph nobody solved. |
@@ -91,7 +91,9 @@ git actually is.
 | | |
 |---|---|
 | **[Repositories](docs/help/repositories.md)** | Every repository Gitcito has ever opened, plus folders you scan, in one searchable list — open, favourite, recent, and per workspace. |
+| **[Go to repository](docs/help/workspaces.md#going-to-a-repository)** (`⌘J`) | Jump to any open repository by name, folder or branch — group members included, most recently used first. |
 | **[Groups & workspaces](docs/help/workspaces.md)** | Tabs with folders nested to any depth, colour-coded, fetch-all per subtree. [Right-click a repository](docs/help/repo-menu.md) for alias, worktrees, GitHub, terminal and remove. |
+| **[Tab images](docs/help/repo-settings.md#tab-image)** | Give a repository a small picture from its own files, and show tabs as image, name or both. |
 | **[Pull or push any branch](docs/help/syncing.md)** | Catch a branch up or publish it from its right-click menu, without checking it out first. |
 | **[Untracked-branch repair](docs/help/syncing.md)** | A pull that stops on "no tracking information" offers the fix as a button — link the branch to its remote, or push it if the remote has never seen it. |
 | **[Pull requests](docs/help/hosting.md)** | Create on GitHub, GitLab, Bitbucket and Azure DevOps. Review, comment, approve and merge on GitHub. |
@@ -104,7 +106,9 @@ git actually is.
 ### AI, optional and grounded
 
 Commit messages, PR descriptions and branch names from the actual diff ·
-[hover to explain](docs/help/ai.md) an identifier · [PR review](docs/help/ai.md)
+[hover to explain](docs/help/ai.md) an identifier ·
+[AI edit](docs/help/ai.md) of just the lines you select, applied to the editor
+draft for review · [PR review](docs/help/ai.md)
 whose findings must anchor to a real `path:line` or get rejected ·
 a [repo wiki](docs/help/repo-wiki.md) where every claim cites its file ·
 [**repository chat**](docs/help/repo-chat.md) that answers from files and commits

@@ -1,5 +1,139 @@
 
 
+## [4.20.0](https://github.com/MyAppDesk/gitcito/compare/v4.19.0...v4.20.0) (2026-11-06)
+
+
+### Features
+
+* **ai:** scoped edit of a selected line range in the file viewer ([#73](https://github.com/MyAppDesk/gitcito/issues/73)) ([044a0ab](https://github.com/MyAppDesk/gitcito/commit/044a0abeafb8d4eb8d97f7c9d9caaebbfb186ef5))
+
+
+### Bug Fixes
+
+* **terminal:** do not treat a resize clamp-to-max as output-follow ([#71](https://github.com/MyAppDesk/gitcito/issues/71)) ([3e8da36](https://github.com/MyAppDesk/gitcito/commit/3e8da366c0a7b92b2cd20996a63a6f4cbb445192))
+
+## [4.19.0](https://github.com/MyAppDesk/gitcito/compare/v4.18.0...v4.19.0) (2026-11-05)
+
+
+### Features
+
+* **worktrees:** add worktree dialog with base branch and folder pickers ([7081757](https://github.com/MyAppDesk/gitcito/commit/70817571a9c5232848cd455a3fe1c6163c690a46))
+* **worktrees:** index new worktrees with codegraph when parent is indexed ([ad8acdd](https://github.com/MyAppDesk/gitcito/commit/ad8acddb58d01d8d37859ee08b05e36008dacef5))
+* **worktrees:** searchable branch picker popover in add-worktree modal ([c806331](https://github.com/MyAppDesk/gitcito/commit/c80633177069e3df7b487e8e0822c44d26ab1b0a))
+
+
+### Bug Fixes
+
+* **worktrees:** run codegraph without a shell and only when opted in ([a771850](https://github.com/MyAppDesk/gitcito/commit/a7718504a97269a8004a58758757fe51c2a51338))
+* **worktrees:** styled branch picker, browse as parent folder, occupied-dir guard ([be1bf35](https://github.com/MyAppDesk/gitcito/commit/be1bf35647bb9c331666d8b2030904c613b2c1bf))
+* **worktrees:** write portable relative gitdir paths for WSL/shells ([0e59161](https://github.com/MyAppDesk/gitcito/commit/0e59161e00513221892efc7f5214c6a496a4201f))
+
+## [4.18.0](https://github.com/MyAppDesk/gitcito/compare/v4.17.1...v4.18.0) (2026-11-05)
+
+
+### Features
+
+* **ai:** support Devin CLI as a local agent backend ([e388ce6](https://github.com/MyAppDesk/gitcito/commit/e388ce6f634d160a88eb95f4bcc15fc92ac9ae4f))
+* **terminal:** add clipboard copy/paste on Windows and Linux ([236f361](https://github.com/MyAppDesk/gitcito/commit/236f3615691303e0e91399468e9f878314d48264))
+
+
+### Bug Fixes
+
+* **ai:** run CLI transports inside the repository being discussed ([1bce2d8](https://github.com/MyAppDesk/gitcito/commit/1bce2d8d88d5b9eaa06d7ada936dc4b32c444651))
+* **terminal:** paste with Ctrl+V and suppress duplicate native paste ([e9b1214](https://github.com/MyAppDesk/gitcito/commit/e9b12149f06ced519a66a014218050f3351c7ea0))
+* **terminal:** preserve scroll position through resize, detach and reflow ([2211a50](https://github.com/MyAppDesk/gitcito/commit/2211a50e0e37cc7d584193053dc1be819c0cd74a))
+
+## [4.17.1](https://github.com/MyAppDesk/gitcito/compare/v4.17.0...v4.17.1) (2026-11-05)
+
+
+### Bug Fixes
+
+* **hosting:** stop re-asking GitHub for CI on every graph poll ([222dae2](https://github.com/MyAppDesk/gitcito/commit/222dae21535ab397cabfaf35fff07a4824532481))
+* **updates:** sign GitHub release calls in and keep the last list ([e7b67ce](https://github.com/MyAppDesk/gitcito/commit/e7b67ce32a8b37a530ff9fd328cf61e7f664a1cc))
+
+## [4.17.0](https://github.com/MyAppDesk/gitcito/compare/v4.16.0...v4.17.0) (2026-10-31)
+
+
+### Features
+
+* close this repo and close others on a repository tab ([#58](https://github.com/MyAppDesk/gitcito/issues/58)) ([a28905a](https://github.com/MyAppDesk/gitcito/commit/a28905a05ce7223d527f6ca1ee44a2b5ebceaf95))
+* pick group colours from the menu and add ungroup ([#62](https://github.com/MyAppDesk/gitcito/issues/62)) ([87e2da5](https://github.com/MyAppDesk/gitcito/commit/87e2da5c0fe3bf07b27772fc2ca2f2b3dc69a37c))
+
+
+### Bug Fixes
+
+* focus a repo already open in a group instead of opening it twice ([#61](https://github.com/MyAppDesk/gitcito/issues/61)) ([99e5f6f](https://github.com/MyAppDesk/gitcito/commit/99e5f6fbe618c19e7e2e313bfa29bda8a8ee866b))
+* highlight only the file row whose diff is open ([#60](https://github.com/MyAppDesk/gitcito/issues/60)) ([b9074b3](https://github.com/MyAppDesk/gitcito/commit/b9074b33185cbe00a650925ece850e18f7b31984))
+* keep word diff cheap on huge lines so the diff no longer crashes ([#59](https://github.com/MyAppDesk/gitcito/issues/59)) ([4c18714](https://github.com/MyAppDesk/gitcito/commit/4c18714546bf138de0d909d7e5e388ecebf12b78))
+* **window:** reload by itself when the window goes blank ([#64](https://github.com/MyAppDesk/gitcito/issues/64)) ([12b2064](https://github.com/MyAppDesk/gitcito/commit/12b2064dc504e720ba8e58e9a95a5202a1c0f83e))
+
+
+### Performance Improvements
+
+* open the window without waiting for the shell PATH probe ([#63](https://github.com/MyAppDesk/gitcito/issues/63)) ([9e6cd3d](https://github.com/MyAppDesk/gitcito/commit/9e6cd3d21958674b2ae7313260902c61b8e65652))
+
+## [4.16.0](https://github.com/MyAppDesk/gitcito/compare/v4.15.0...v4.16.0) (2026-10-19)
+
+
+### Features
+
+* add group tab functionality for repository management ([32fa7ed](https://github.com/MyAppDesk/gitcito/commit/32fa7edbfec7e2ad80f6e8b82ca992b48e528e5f))
+
+## [4.15.0](https://github.com/MyAppDesk/gitcito/compare/v4.14.0...v4.15.0) (2026-10-18)
+
+
+### Features
+
+* add repository image picker and loading functionality ([bf7dd89](https://github.com/MyAppDesk/gitcito/commit/bf7dd89d5c5c61f4413f8d402356b5f3a43040fe))
+
+## [4.14.0](https://github.com/MyAppDesk/gitcito/compare/v4.13.0...v4.14.0) (2026-10-17)
+
+
+### Features
+
+* **viewer:** show a deleted file as it was before the deletion ([64e73b8](https://github.com/MyAppDesk/gitcito/commit/64e73b80d1ae7fbe1ec4f7c24cf86b98fcdd8958))
+
+
+### Bug Fixes
+
+* **diff:** fold "No newline at end of file" into the line before it ([8e0bbb1](https://github.com/MyAppDesk/gitcito/commit/8e0bbb1085a47b556d79c24f597bd0b2dc549e9f))
+* exact undo after a merged hunk, and settle a cancelled discard ([#57](https://github.com/MyAppDesk/gitcito/issues/57)) ([8352e6d](https://github.com/MyAppDesk/gitcito/commit/8352e6d7a2676d917135d122a68608886fea66cc))
+
+## [4.13.0](https://github.com/MyAppDesk/gitcito/compare/v4.12.0...v4.13.0) (2026-10-13)
+
+
+### Features
+
+* **diff:** mark code that only moved within a file ([#55](https://github.com/MyAppDesk/gitcito/issues/55)) ([5314e4d](https://github.com/MyAppDesk/gitcito/commit/5314e4df27e4d6df0bff973bab0e2d6c08397f4d))
+* make file discards undoable and remove new files on discard all ([#54](https://github.com/MyAppDesk/gitcito/issues/54)) ([3d43aba](https://github.com/MyAppDesk/gitcito/commit/3d43abae112b5cd57639f8845b897a89318c9b38))
+* unstage, discard, revert and apply by hunk or line, with undo ([#56](https://github.com/MyAppDesk/gitcito/issues/56)) ([5ce4a21](https://github.com/MyAppDesk/gitcito/commit/5ce4a219670d5b5830fc3974b58a71e36e8e6a67))
+
+
+### Bug Fixes
+
+* keep an open file in step with git changes made outside the app ([#53](https://github.com/MyAppDesk/gitcito/issues/53)) ([2560faf](https://github.com/MyAppDesk/gitcito/commit/2560fafff2b1e10c0b48ed347e266335001b71f0))
+* keep the files search responsive while typing ([#52](https://github.com/MyAppDesk/gitcito/issues/52)) ([c8ca607](https://github.com/MyAppDesk/gitcito/commit/c8ca607fdb60a6af3af8100053d54d318018bd71))
+
+## [4.12.0](https://github.com/MyAppDesk/gitcito/compare/v4.11.1...v4.12.0) (2026-10-11)
+
+
+### Features
+
+* go to any open repository with cmd/ctrl+j ([#50](https://github.com/MyAppDesk/gitcito/issues/50)) ([779e8b7](https://github.com/MyAppDesk/gitcito/commit/779e8b7e3699b00987e7ba16bc78325cbf1739ff))
+* list a fork's pull requests on its parent ([#48](https://github.com/MyAppDesk/gitcito/issues/48)) ([c7b3053](https://github.com/MyAppDesk/gitcito/commit/c7b3053aa2291731848880994dae41f4217003e0))
+* open several repositories from one open repository pick ([#49](https://github.com/MyAppDesk/gitcito/issues/49)) ([0bc65a0](https://github.com/MyAppDesk/gitcito/commit/0bc65a05e42fa624ae4ce93eb95294945872f7b6))
+
+
+### Bug Fixes
+
+* **credentials:** stop stacking Keychain prompts from background polling ([#43](https://github.com/MyAppDesk/gitcito/issues/43)) ([55e1fc5](https://github.com/MyAppDesk/gitcito/commit/55e1fc5f6d04437d88dbfc6f4b25b0a4b147862d))
+* keep tabs for moved or missing repository folders ([#45](https://github.com/MyAppDesk/gitcito/issues/45)) ([04a5e56](https://github.com/MyAppDesk/gitcito/commit/04a5e56c526e78eb2d863259be29bcdd1fd7a3ab))
+* keep the toolbar picker chevron clear of long names ([#47](https://github.com/MyAppDesk/gitcito/issues/47)) ([cf39cdb](https://github.com/MyAppDesk/gitcito/commit/cf39cdbdbac7889ae6967e5d7e52630624da910d))
+* let bounded number fields be typed into ([#46](https://github.com/MyAppDesk/gitcito/issues/46)) ([1dff977](https://github.com/MyAppDesk/gitcito/commit/1dff977b732a04327e87c58483e469e8c3622115))
+* read both bisect wordings and stop tests depending on the default branch ([#42](https://github.com/MyAppDesk/gitcito/issues/42)) ([77231a3](https://github.com/MyAppDesk/gitcito/commit/77231a37a8d9907d398a37b813a7295d20cd74e6))
+* report AI and GitHub errors in full and retry LiteLLM without the thinking toggle ([#51](https://github.com/MyAppDesk/gitcito/issues/51)) ([66c7758](https://github.com/MyAppDesk/gitcito/commit/66c7758ff04226b0447ee42b9b01080f384444f0)), closes [#39](https://github.com/MyAppDesk/gitcito/issues/39) [#41](https://github.com/MyAppDesk/gitcito/issues/41) [#40](https://github.com/MyAppDesk/gitcito/issues/40) [#39](https://github.com/MyAppDesk/gitcito/issues/39) [#40](https://github.com/MyAppDesk/gitcito/issues/40) [#41](https://github.com/MyAppDesk/gitcito/issues/41)
+* **settings:** skip the Safe Storage prompt when there are no secrets ([#44](https://github.com/MyAppDesk/gitcito/issues/44)) ([bde2d8a](https://github.com/MyAppDesk/gitcito/commit/bde2d8a86ce752a0c9e7ff8d63be5a2e7ee7699a))
+
 ## [4.11.1](https://github.com/MyAppDesk/gitcito/compare/v4.11.0...v4.11.1) (2026-10-03)
 
 ## [4.11.0](https://github.com/MyAppDesk/gitcito/compare/v4.10.0...v4.11.0) (2026-10-03)

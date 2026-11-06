@@ -268,7 +268,8 @@ export function CommitComposer({ repo }: { repo: RepoData }): React.JSX.Element 
         .searchFileMatches(path, allPaths, query, {
           caseSensitive: filter.caseSensitive,
           wholeWord: filter.wholeWord,
-          regex: filter.regex
+          regex: filter.regex,
+          searchId: 'commit'
         })
         .then((hits) => {
           if (!cancelled) setContentHits(hits)
@@ -429,7 +430,14 @@ export function CommitComposer({ repo }: { repo: RepoData }): React.JSX.Element 
     window.addEventListener('pointerup', up)
   }
 
-  const currentFile = fileView && fileView.repoPath === path && fileView.source.type === 'wip' ? fileView.file : null
+  // A partly staged file sits in both lists; only the list whose diff is open lights up.
+  const currentFor = (list: ListName): string | null =>
+    fileView && fileView.repoPath === path && fileView.source.type === 'wip' &&
+    fileView.source.staged === (list === 'staged')
+      ? fileView.file
+      : null
+  const currentUnstaged = currentFor('unstaged')
+  const currentStaged = currentFor('staged')
 
   const handleClick = (list: ListName) => (file: FileEntry, e: React.MouseEvent) => {
     claimRangeKeys(keyToken)
@@ -601,20 +609,7 @@ export function CommitComposer({ repo }: { repo: RepoData }): React.JSX.Element 
       {
         label: t('composer.discardChanges'),
         danger: true,
-        onClick: () =>
-          useUIStore.getState().openModal({
-            kind: 'confirm',
-            title: t('composer.discardChanges'),
-            message: interp(t('composer.discardMsg'), { file: label }),
-            danger: true,
-            confirmLabel: t('composer.discardConfirm'),
-            onConfirm: async () => {
-              const untracked = targetFiles.filter((f) => f.untracked).map((f) => f.path)
-              const tracked = targetFiles.filter((f) => !f.untracked).map((f) => f.path)
-              if (tracked.length) await repoActions.discard(path, tracked, false)
-              if (untracked.length) await repoActions.discard(path, untracked, true)
-            }
-          })
+        onClick: () => void repoActions.discardChanges(path, targetFiles, { label })
       },
       ...buildIgnoreMenu(targetFiles, label)
     ])
@@ -637,20 +632,7 @@ export function CommitComposer({ repo }: { repo: RepoData }): React.JSX.Element 
       {
         label: t('composer.discardFolder'),
         danger: true,
-        onClick: () =>
-          useUIStore.getState().openModal({
-            kind: 'confirm',
-            title: t('composer.discardChanges'),
-            message: interp(t('composer.discardMsg'), { file: label }),
-            danger: true,
-            confirmLabel: t('composer.discardConfirm'),
-            onConfirm: async () => {
-              const untracked = inFolder.filter((f) => f.untracked).map((f) => f.path)
-              const tracked = inFolder.filter((f) => !f.untracked).map((f) => f.path)
-              if (tracked.length) await repoActions.discard(path, tracked, false)
-              if (untracked.length) await repoActions.discard(path, untracked, true)
-            }
-          })
+        onClick: () => void repoActions.discardChanges(path, inFolder, { label })
       },
       ...buildIgnoreMenu(inFolder, `"${folderPath}/"`, folderPath)
     ])
@@ -712,7 +694,7 @@ export function CommitComposer({ repo }: { repo: RepoData }): React.JSX.Element 
     setAiBusy(true)
     try {
       const stagedDiff = await gitApi.stagedDiff(path)
-      const msg = await aiApi.commitMessage(stagedDiff, aiFor('commit'), { branch: repo.branches.current })
+      const msg = await aiApi.commitMessage(stagedDiff, { ...aiFor('commit'), cliCwd: repo.path }, { branch: repo.branches.current })
       setSummary(msg.summary)
       setDescription(msg.description)
       toast('success', t('composer.aiGenerated'))
@@ -728,7 +710,7 @@ export function CommitComposer({ repo }: { repo: RepoData }): React.JSX.Element 
     setAiStageBusy(true)
     try {
       const files = unstaged.map((f) => ({ path: f.path, status: f.status }))
-      const result = await aiApi.smartStage(files, aiFor('commit'))
+      const result = await aiApi.smartStage(files, { ...aiFor('commit'), cliCwd: repo.path })
       if (result.toStage.length === 0) {
         toast('info', t('composer.smartStageNothing'))
         return
@@ -1006,7 +988,7 @@ export function CommitComposer({ repo }: { repo: RepoData }): React.JSX.Element 
               >
                 <FileListView
                   files={fUnstaged}
-                  current={currentFile}
+                  current={currentUnstaged}
                   selected={selection.list === 'unstaged' ? selection.paths : undefined}
                   onFileClick={handleClick('unstaged')}
                   onFileContext={handleContext('unstaged', fUnstaged)}
@@ -1078,7 +1060,7 @@ export function CommitComposer({ repo }: { repo: RepoData }): React.JSX.Element 
               >
                 <FileListView
                   files={fStaged}
-                  current={currentFile}
+                  current={currentStaged}
                   selected={selection.list === 'staged' ? selection.paths : undefined}
                   onFileClick={handleClick('staged')}
                   onFileContext={handleContext('staged', fStaged)}
@@ -1281,23 +1263,7 @@ export function CommitComposer({ repo }: { repo: RepoData }): React.JSX.Element 
             className="btn ghost small discard-btn"
             title={t('composer.discardEverything')}
             disabled={staged.length + unstaged.length === 0}
-            onClick={() =>
-              useUIStore.getState().openModal({
-                kind: 'confirm',
-                title: t('composer.discardAllTitle'),
-                message: t('composer.discardAllMsg'),
-                danger: true,
-                confirmLabel: t('composer.discardAllConfirm'),
-                onConfirm: async () => {
-                  await gitApi.unstageAll(path).catch(() => undefined)
-                  const all = [...staged, ...unstaged]
-                  const untracked = all.filter((fl) => fl.untracked).map((fl) => fl.path)
-                  const tracked = all.filter((fl) => !fl.untracked).map((fl) => fl.path)
-                  if (tracked.length) await repoActions.discard(path, tracked, false)
-                  if (untracked.length) await repoActions.discard(path, untracked, true)
-                }
-              })
-            }
+            onClick={() => void repoActions.discardChanges(path, [...staged, ...unstaged], { all: true })}
           >
             <Trash2 size={13} />
           </button>

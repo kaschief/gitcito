@@ -44,6 +44,7 @@ interface LaunchApi {
 interface PreloadApi {
   platform: string
   shotMode: boolean
+  scrollDebug: { enabled: boolean; push(line: string): void }
   git(method: string, ...args: unknown[]): Promise<unknown>
   onCloneProgress(cb: (p: import('../../shared/types').CloneProgress) => void): () => void
   /** Live stdout/stderr of a running `git bisect run`. */
@@ -73,6 +74,7 @@ interface PreloadApi {
     set(granted: boolean): Promise<boolean>
   }
   selectDirectory(title?: string): Promise<string | null>
+  selectDirectories(title?: string): Promise<string[]>
   savePatch(defaultName: string, content: string): Promise<string | null>
   openPatch(): Promise<{ path: string; content: string } | null>
   saveBinary(
@@ -134,6 +136,7 @@ interface PreloadApi {
     listModels(cfg: unknown, force?: boolean): Promise<unknown>
     detectCli(): Promise<unknown>
     explainCode(code: string, lang: string, cfg: unknown): Promise<unknown>
+    editSelection(req: unknown, cfg: unknown): Promise<unknown>
     hoverExplain(req: unknown, cfg: unknown): Promise<unknown>
     resolveConflict(file: string, content: string, cfg: unknown): Promise<unknown>
     generateConfig(repoName: string, artifacts: unknown[], context: string, cfg: unknown): Promise<unknown>
@@ -266,6 +269,8 @@ interface PreloadApi {
     onCommand(cb: (id: string) => void): () => void
   }
   window: {
+    /** Tells the main process the whole UI threw, so it can log and reload. */
+    reportUiCrash(message: string): void
     minimize(): void
     maximize(): void
     close(): void

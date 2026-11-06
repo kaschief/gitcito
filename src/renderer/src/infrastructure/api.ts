@@ -120,6 +120,7 @@ import type {
   CosmosCommit,
   ChangelogResult,
   SnapshotInfo,
+  SavedWork,
   SnapshotKind,
   TeammateRadarResult,
   CommitEditInfo,
@@ -144,6 +145,7 @@ import type {
   PRReviewResult,
   HoverExplainRequest,
   HoverExplainResult,
+  EditSelectionRequest,
   ImportGraph,
   KeychainConsent,
   KeychainReason,
@@ -175,6 +177,8 @@ import type { CliOpenPayload } from '../../../shared/cli'
 const call = <T>(method: string, ...args: unknown[]): Promise<T> => window.api.git(method, ...args) as Promise<T>
 
 export const gitApi = {
+  isRepository: (path: string) => call<boolean>('isRepository', path),
+  directoryExists: (path: string) => call<boolean>('directoryExists', path),
   open: (path: string) => call<RepoSummary>('open', path),
   log: (path: string, max?: number, skip?: number) => call<GraphCommit[]>('log', path, max, skip),
   branches: (path: string) => call<BranchesPayload>('branches', path),
@@ -283,6 +287,8 @@ export const gitApi = {
     call<void>('stashApplyFiles', path, sha, tracked, untracked),
   restoreFromCommit: (path: string, hash: string, paths: string[]) =>
     call<void>('restoreFromCommit', path, hash, paths),
+  captureWork: (path: string) => call<SavedWork | null>('captureWork', path),
+  restoreWork: (path: string, saved: SavedWork, paths: string[]) => call<void>('restoreWork', path, saved, paths),
 
   stage: (path: string, files: string[]) => call<void>('stage', path, files),
   applyRepoFileActions: (path: string, actions: PreparedRepoChatFileAction[]) =>
@@ -504,6 +510,7 @@ export const gitApi = {
       regex?: boolean
       max?: number
       maxPerFile?: number
+      searchId?: string
     }
   ) => call<CodeSearchHit[]>('searchFileMatches', path, files, query, opts),
   searchCommitMatches: (
@@ -531,6 +538,7 @@ export const gitApi = {
   ) => call<HistorySearchHit[]>('searchHistory', path, query, opts),
   fileDataUrl: (path: string, file: string, ref?: string, force?: boolean) =>
     call<string>('fileDataUrl', path, file, ref, force),
+  repoImage: (path: string, file: string) => call<string | null>('repoImage', path, file),
   imageDiff: (path: string, file: string, beforeRef: string | null, afterRef?: string) =>
     call<{ before: string | null; after: string | null }>('imageDiff', path, file, beforeRef, afterRef),
   blameFile: (path: string, file: string, ref?: string) => call<BlameLine[]>('blameFile', path, file, ref),
@@ -596,6 +604,15 @@ export const gitApi = {
   runInteractiveRebase: (path: string, base: string, steps: RebaseStep[]) =>
     call<void>('runInteractiveRebase', path, base, steps),
   stagePatch: (path: string, patch: string) => call<void>('stagePatch', path, patch),
+  applyHunkPatch: (
+    path: string,
+    patch: string,
+    target: 'index' | 'worktree',
+    reverse: boolean,
+    ignoreWhitespace?: boolean
+  ) => call<{ conflicts: number; merge?: string }>('applyHunkPatch', path, patch, target, reverse, ignoreWhitespace),
+  restoreHunkMerge: (path: string, merge: string, side: 'before' | 'after') =>
+    call<void>('restoreHunkMerge', path, merge, side),
   compareBranches: (path: string, a: string, b: string) =>
     call<BranchCompareResult>('compareBranches', path, a, b),
   mergePreview: (path: string, base: string, refs: string[]) =>
@@ -664,6 +681,8 @@ export const aiApi = {
   detectCli: () => window.api.ai.detectCli() as Promise<DetectedCli[]>,
   explainCode: (code: string, lang: string, cfg: AIConfig) =>
     window.api.ai.explainCode(code, lang, cfg) as Promise<string>,
+  editSelection: (req: EditSelectionRequest, cfg: AIConfig) =>
+    window.api.ai.editSelection(req, cfg) as Promise<string>,
   hoverExplain: (req: HoverExplainRequest, cfg: AIConfig) =>
     window.api.ai.hoverExplain(req, cfg) as Promise<HoverExplainResult>,
   resolveConflict: (file: string, content: string, cfg: AIConfig) =>
@@ -804,6 +823,7 @@ export const infoApi = {
 
 export const shellApi = {
   selectDirectory: (title?: string) => window.api.selectDirectory(title),
+  selectDirectories: (title?: string) => window.api.selectDirectories(title),
   revealInFolder: (fullPath: string) => window.api.shell.showItemInFolder(fullPath),
   openPath: (fullPath: string) => window.api.shell.openPath(fullPath),
   openWithPicker: (fullPath: string) => window.api.shell.openWithPicker(fullPath),
@@ -1023,4 +1043,8 @@ export const menuApi = {
 export const launchApi = {
   resolveInputs: (dir: string, inputs: LaunchInput[]): Promise<LaunchInputResolution> =>
     window.api.launch.resolveInputs(dir, inputs)
+}
+
+export const windowApi = {
+  reportUiCrash: (message: string) => window.api.window.reportUiCrash(message)
 }

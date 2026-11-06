@@ -4,6 +4,7 @@ import {
   wordDiff,
   wordRangesByLine,
   buildSplitRows,
+  splitEditPartners,
   computeGutterChanges,
   gutterMarksByLine
 } from '../src/renderer/src/lib/diff'
@@ -50,6 +51,21 @@ rename to b.txt
 Binary files a/logo.png and b/logo.png differ`
     expect(parseDiff(renamed).every((l) => l.kind === 'meta')).toBe(true)
   })
+
+  // The marker used to parse as context: a row numbered 0 in a deleted file, and
+  // every line after it in the hunk numbered one too high.
+  it('folds "No newline at end of file" into the line before it', () => {
+    const lines = parseDiff(`@@ -1,2 +1,3 @@
+ a
+-b
+\\ No newline at end of file
++b
++c
+\\ No newline at end of file`)
+    expect(lines.map((l) => l.kind)).toEqual(['hunk', 'ctx', 'del', 'add', 'add'])
+    expect(lines.filter((l) => l.kind === 'add').map((l) => l.newNo)).toEqual([2, 3])
+    expect(lines.map((l) => !!l.noEol)).toEqual([false, false, true, false, true])
+  })
 })
 
 describe('wordDiff', () => {
@@ -61,6 +77,34 @@ describe('wordDiff', () => {
 
   it('returns empty ranges for identical lines', () => {
     expect(wordDiff('same', 'same')).toEqual({ del: [], add: [] })
+  })
+
+  it('marks a pure insertion and a pure deletion', () => {
+    expect(wordDiff('foo(a)', 'foo(a, b)')).toEqual({ del: [], add: [[5, 8]] })
+    expect(wordDiff('foo(a, b)', 'foo(a)')).toEqual({ del: [[5, 8]], add: [] })
+  })
+
+  // A minified line runs to tens of thousands of tokens; a full LCS table for
+  // two of them once blanked the window by exhausting renderer memory.
+  const minified = (tag: string): string =>
+    Array.from({ length: 6000 }, (_, i) => `<div class="c${i}">${i === 3000 ? tag : 'x'}</div>`).join('')
+
+  it('handles one edit inside a huge line', () => {
+    const a = minified('old')
+    const b = minified('new')
+    const { del, add } = wordDiff(a, b)
+    expect(del.map(([s, e]) => a.slice(s, e))).toEqual(['old'])
+    expect(add.map(([s, e]) => b.slice(s, e))).toEqual(['new'])
+  })
+
+  it('marks the middle changed wholesale when edits are far apart in a huge line', () => {
+    const a = minified('x').replace('c1"', 'c1a"').replace('c5998"', 'c5998a"')
+    const b = minified('x').replace('c1"', 'c1b"').replace('c5998"', 'c5998b"')
+    const { del, add } = wordDiff(a, b)
+    expect(del).toHaveLength(1)
+    expect(add).toHaveLength(1)
+    expect(a.slice(del[0][0], del[0][1])).toMatch(/^c1a.*c5998a$/s)
+    expect(b.slice(add[0][0], add[0][1])).toMatch(/^c1b.*c5998b$/s)
   })
 })
 
@@ -94,6 +138,17 @@ describe('buildSplitRows', () => {
     expect(changes.length).toBe(2)
     expect(changes[1].left).toBeUndefined()
     expect(changes[1].right?.text).toBe('new2')
+  })
+})
+
+describe('splitEditPartners', () => {
+  it('pairs each deletion with the addition opposite it, both ways', () => {
+    const lines = parseDiff(`@@ -1,2 +1,2 @@\n-a\n-b\n+A\n+B`)
+    expect([...splitEditPartners(lines)].sort()).toEqual([[1, 3], [2, 4], [3, 1], [4, 2]])
+  })
+
+  it('leaves unbalanced runs unpaired', () => {
+    expect(splitEditPartners(parseDiff(`@@ -1,1 +1,2 @@\n-old\n+new1\n+new2`)).size).toBe(0)
   })
 })
 

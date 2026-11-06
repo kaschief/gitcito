@@ -16,6 +16,9 @@ your aliases.
 - **Multiple tabs per repository**, each starting in that repository's folder.
 - Dock it **under** the graph or as a **right-hand column**; the pane remembers
   its size.
+- Each terminal remembers **where you were reading**: switch terminals, groups
+  or repo tabs and the scrollback stays put — pinned to the bottom when it was
+  already following output, back on the same line when it was not.
 - Terminal visibility is per repository: switching to a tab that never opened one
   keeps it closed.
 - Tabs name themselves after what is running in them.
@@ -35,9 +38,13 @@ your aliases.
 | <kbd>⌃`</kbd> | Show or hide the terminal — the physical Control key, on every platform |
 | <kbd>⌘T</kbd> / <kbd>Ctrl+T</kbd> | New terminal, while the terminal has focus |
 | <kbd>⌘W</kbd> / <kbd>Ctrl+W</kbd> | Close the focused terminal; closing the last one hides the panel |
+| <kbd>Ctrl+Shift+C</kbd> | Copy the selection; a bare <kbd>Ctrl+C</kbd> copies too while a selection exists and stays SIGINT when there is none |
+| <kbd>Ctrl+V</kbd> / <kbd>Ctrl+Shift+V</kbd> / <kbd>Shift+Ins</kbd> | Paste from the clipboard |
+| Right-click | Copy the selection, or paste when nothing is selected |
 
 The last two are scoped to the terminal on purpose: away from it, they still
-open and close [workspace tabs](workspaces.md).
+open and close [workspace tabs](workspaces.md). On macOS the Edit menu's
+Copy/Paste work the same way.
 
 ## Your PATH
 

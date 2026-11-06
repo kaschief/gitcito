@@ -234,6 +234,21 @@ textarea:focus {
   font-size: 12px;
 }
 
+/* Larger than the 13px folder icon it replaces: a picture needs the room to be
+   recognisable, and the 32px tab has it. Alone, it is the tab's only label. */
+.tab-repo-image {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  object-fit: contain;
+}
+
+.tab-repo-image.solo {
+  width: 22px;
+  height: 22px;
+}
+
 .tab-status {
   flex: none;
   width: 6px;
@@ -273,7 +288,19 @@ textarea:focus {
   transition: opacity 0.12s, background 0.12s;
 }
 
+/* The close button takes no room until it is wanted: an invisible-but-present
+   ✕ on every tab is what made the strip so wide. */
+.tab .tab-close {
+  display: none;
+}
+
 .tab:hover .tab-close,
+.tab:focus-within .tab-close {
+  display: flex;
+}
+
+.tab:hover .tab-close,
+.tab:focus-within .tab-close,
 .tab:hover .tab-chevron,
 .tab.active .tab-chevron {
   opacity: 1;
@@ -644,6 +671,14 @@ textarea:focus {
 
 .group-color-swatch:hover {
   transform: scale(1.12);
+}
+
+/* The New Group dialog: the palette sits under the name, a size down from the
+   colour dialog so it reads as a detail of the group rather than the point. */
+.group-color-swatches.compact .group-color-swatch {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
 }
 
 .group-color-swatch.selected {
@@ -1190,6 +1225,8 @@ textarea:focus {
   flex-direction: column;
   align-items: flex-start;
   min-width: 0;
+  max-width: 130px;
+  overflow: hidden;
 }
 .repo-pill-label {
   font-size: 9px;
@@ -1198,16 +1235,20 @@ textarea:focus {
   color: var(--text-3);
   line-height: 1.1;
 }
+/* Block, not flex: text-overflow never reaches the anonymous flex item a bare
+   text node becomes, so a long name spilled out under the chevron. Capped at
+   the stack's width so it truncates there instead. */
 .repo-pill-stack strong {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+  display: block;
   font-size: 13px;
   font-weight: 600;
-  max-width: 130px;
+  max-width: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.repo-pill-stack strong svg {
+  vertical-align: -2px;
 }
 .repo-pill svg {
   color: var(--text-3);
@@ -4078,6 +4119,25 @@ body.col-resizing .node-ava {
 .diff-text {
   flex: 1;
 }
+/* Struck-through return arrow: this line ends the file with no newline. */
+.diff-noeol {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+  padding: 0 6px;
+  color: var(--text-2);
+  opacity: 0.7;
+}
+.diff-noeol::after {
+  content: '';
+  position: absolute;
+  left: 5px;
+  right: 5px;
+  top: 50%;
+  border-top: 1px solid currentColor;
+  transform: rotate(-35deg);
+}
 
 /* Add/del text colour is a token, not a literal: the pale mint and pink only
    have contrast against a dark canvas — on a light theme they wash out to
@@ -5291,6 +5351,46 @@ body.col-resizing .node-ava {
   cursor: default;
 }
 
+/* Finder-style colour dots inside a menu. Indented to line up with the labels
+   above and below; the ring for the colour in use matches the swatch cards. */
+.menu-swatches {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px 6px 35px;
+}
+.menu-swatch {
+  width: 15px;
+  height: 15px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  cursor: pointer;
+  outline: 2px solid transparent;
+  outline-offset: 0;
+  transition: transform 0.12s, outline-color 0.15s, outline-offset 0.15s;
+}
+.menu-swatch:hover {
+  transform: scale(1.2);
+}
+.menu-swatch.selected {
+  outline-color: var(--text-0);
+  outline-offset: 2px;
+}
+.menu-swatch:focus-visible {
+  outline: 2px dashed var(--text-1);
+  outline-offset: 2px;
+}
+.menu-swatch.selected:focus-visible {
+  outline-style: solid;
+  outline-color: var(--text-0);
+  box-shadow: 0 0 0 6px var(--accent-soft);
+}
+@media (prefers-reduced-motion: reduce) {
+  .menu-swatch {
+    transition: none;
+  }
+}
+
 .menu-separator {
   height: 1px;
   background: var(--border);
@@ -5359,6 +5459,93 @@ body.col-resizing .node-ava {
 
 .modal-input {
   width: 100%;
+}
+
+/* Select-looking button that opens the app's own context menu — a native
+   <select> keeps OS chrome and looks foreign inside a styled modal. Mirrors
+   the shared input appearance (bg, border, radius, padding). */
+.modal-select-btn {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-family: inherit;
+  background: var(--bg-0);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text-0);
+  padding: 7px 10px;
+  font-size: 12.5px;
+  text-align: start;
+  cursor: pointer;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.modal-select-btn:hover {
+  border-color: var(--accent);
+}
+.modal-select-btn:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-soft);
+  outline: none;
+}
+.modal-select-btn svg {
+  flex-shrink: 0;
+  color: var(--text-2);
+}
+.modal-select-label {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Searchable dropdown attached to a modal field (BranchFieldPicker). Reuses
+   the sidebar .branch-picker-* chrome; these rules add the filter box and
+   the small bits the field variant needs. */
+.branch-picker-field {
+  padding: 5px;
+}
+.branch-picker-search {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  flex: 0 0 auto;
+  margin-bottom: 4px;
+  padding: 5px 9px;
+  color: var(--text-2);
+  background: var(--bg-0);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.branch-picker-search:focus-within {
+  border-color: var(--accent);
+}
+.branch-picker-search input {
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  background: none;
+  border: none;
+  color: var(--text-0);
+  font-size: 12.5px;
+}
+.branch-picker-search input:focus {
+  outline: none;
+}
+.branch-picker-current {
+  margin-left: auto;
+  flex: 0 0 auto;
+  color: var(--text-3);
+  font-size: 10.5px;
+}
+.branch-picker-empty {
+  padding: 12px;
+  color: var(--text-3);
+  font-size: 12px;
+  text-align: center;
 }
 
 /* launch.json ${input:…} picker (pickString options) */
@@ -7211,6 +7398,10 @@ body.col-resizing .node-ava {
   background: rgba(242, 204, 96, 0.14);
   color: var(--yellow);
 }
+.fv-chip.deleted {
+  background: color-mix(in srgb, var(--red) 18%, transparent);
+  color: var(--red);
+}
 .fv-modes {
   display: flex;
   margin-inline-start: auto;
@@ -7250,6 +7441,46 @@ body.col-resizing .node-ava {
 /* AI "Explain" affordance */
 .fv-explain-btn {
   flex-shrink: 0;
+}
+.fv-ai-edit-btn {
+  flex-shrink: 0;
+}
+.fv-ai-edit-bar {
+  position: absolute;
+  inset-inline: 12px;
+  bottom: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--surface-2, #1c2130);
+  border: 1px solid var(--border, #2c3652);
+  border-radius: 8px;
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
+  z-index: 30;
+}
+.fv-ai-edit-bar svg {
+  color: var(--accent, #8b6cff);
+  flex-shrink: 0;
+}
+.fv-ai-edit-range {
+  font-size: 11px;
+  color: var(--fg-dim, #8a93ad);
+  white-space: nowrap;
+}
+.fv-ai-edit-input {
+  flex: 1;
+  min-width: 0;
+  background: var(--surface-1, #12152a);
+  border: 1px solid var(--border, #2c3652);
+  border-radius: 5px;
+  color: var(--fg, #d6dbe8);
+  font: inherit;
+  padding: 4px 8px;
+}
+.fv-ai-edit-input:focus {
+  outline: none;
+  border-color: var(--accent, #8b6cff);
 }
 .fv-explain-panel {
   position: absolute;
@@ -7946,6 +8177,16 @@ body.col-resizing .node-ava {
   color: var(--text-2);
   line-height: 1.5;
   margin-top: 4px;
+}
+
+/* NumberField: a typed value outside the bounds is flagged, not clamped, until the field is left. */
+.number-field-error {
+  font-size: 11px;
+  color: var(--red);
+}
+input.is-invalid {
+  border-color: var(--red) !important;
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--red) 18%, transparent) !important;
 }
 
 @media (max-width: 900px) {
@@ -11655,26 +11896,45 @@ input[type='range']:focus-visible {
 /* When the AI button is absent, push the open button to the right edge. */
 .sb-item.pr > .sb-pr-open:nth-child(3) { margin-inline-start: auto; }
 
-/* ── Hunk staging button (feature 11) ── */
-.diff-line.hunk { position: relative; }
-.diff-stage-hunk {
-  position: absolute;
+/* ── Hunk action buttons ── */
+/* A hunk can carry several actions (Stage hunk + Discard hunk), so the
+   wrapper is what sits on the bar and the buttons line up inside it.
+   Sticky, not absolute: the diff is as wide as its longest line, so a button
+   anchored to the end of the bar sat off-screen whenever a line ran long. Sticky
+   keeps it against the visible edge. The negative block margin stops the
+   buttons from making the bar taller than a code line. */
+.diff-hunk-actions {
+  position: sticky;
   inset-inline-end: 6px;
-  top: 50%;
-  transform: translateY(-50%);
+  margin-inline-start: auto;
+  margin-block: -3px;
+  padding-inline-start: 12px;
+  align-self: center;
+  display: inline-flex;
+  gap: 6px;
+  z-index: 1;
+}
+.diff-stage-hunk {
   font-size: 10.5px;
   padding: 1px 7px;
   white-space: nowrap;
 }
+.diff-stage-hunk.danger:hover:not(:disabled) {
+  color: var(--red);
+  box-shadow: inset 0 0 0 1px var(--red);
+}
 
-/* ── Line-level staging ── */
-.diff-line.selectable {
+/* ── Line-level actions ── */
+.diff-line.selectable,
+.diff-split-cell.selectable {
   cursor: pointer;
 }
-.diff-line.selectable:hover {
+.diff-line.selectable:hover,
+.diff-split-cell.selectable:hover {
   filter: brightness(1.12);
 }
-.diff-line.line-selected {
+.diff-line.line-selected,
+.diff-split-cell.line-selected {
   box-shadow: inset 3px 0 0 var(--accent);
   background: color-mix(in srgb, var(--accent) 14%, transparent);
 }
@@ -13440,6 +13700,126 @@ mark.find-hit.active {
   font-size: 13px;
 }
 
+/* ─── Repository switcher (Cmd/Ctrl+J) ─────────────────────────────────────
+   A sheet hanging from the tab bar, not a modal: no backdrop, nothing dimmed. */
+/* While it is open the title bar stops being a window handle, so a click there
+   reaches the page and closes the switcher instead of starting a window drag. */
+html:has(.repo-switcher) .titlebar {
+  -webkit-app-region: no-drag;
+}
+.repo-switcher {
+  position: fixed;
+  top: 48px;
+  left: 50%;
+  z-index: 1000;
+  width: min(480px, calc(100vw - 32px));
+  max-height: min(440px, 70vh);
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.28);
+  overflow: hidden;
+}
+.repo-switcher-input-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 10px 13px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.repo-switcher-search-icon { color: var(--text-2); flex-shrink: 0; }
+.repo-switcher-input {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  background: transparent;
+  color: var(--text-0);
+  font-size: 14px;
+  outline: none;
+}
+.repo-switcher-input::placeholder { color: var(--text-2); }
+.repo-switcher-list { overflow-y: auto; padding: 5px; }
+.repo-switcher-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  min-width: 0;
+  padding: 7px 9px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-0);
+  text-align: start;
+  cursor: pointer;
+}
+.repo-switcher-row.active { background: var(--accent-soft); }
+.repo-switcher-row.current { opacity: 0.5; cursor: default; }
+.repo-switcher-icon { color: var(--text-2); flex-shrink: 0; }
+.repo-switcher-row.active .repo-switcher-icon { color: var(--accent); }
+.repo-switcher-name {
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex-shrink: 0;
+  max-width: 55%;
+}
+.repo-switcher-row.find .repo-switcher-name { font-weight: 400; color: var(--text-1); max-width: none; flex-shrink: 1; }
+.repo-switcher-name mark {
+  background: transparent;
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--accent) 45%, transparent);
+  text-underline-offset: 2px;
+}
+.repo-switcher-branch {
+  min-width: 0;
+  flex-shrink: 1;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.repo-switcher-group { flex-shrink: 0; font-size: 11px; color: var(--text-2); }
+.repo-switcher-marks { margin-inline-start: auto; display: inline-flex; align-items: center; flex-shrink: 0; }
+.repo-switcher-key {
+  flex-shrink: 0;
+  min-width: 26px;
+  text-align: end;
+  font-size: 11px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.repo-switcher-sep {
+  padding: 8px 9px 3px;
+  font-size: 11px;
+  color: var(--text-2);
+}
+.repo-switcher-empty { padding: 10px 9px 4px; font-size: 12px; color: var(--text-2); }
+.repo-switcher-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  padding: 7px 13px;
+  border-top: 1px solid var(--border-soft);
+  font-size: 11px;
+  color: var(--text-2);
+}
+.repo-switcher-foot kbd {
+  font-family: inherit;
+  font-size: 10px;
+  padding: 0 5px;
+  border: 1px solid var(--border-soft);
+  border-radius: 4px;
+  background: var(--bg-3);
+}
+
 /* ─── Code search modal (⌘⇧F) ──────────────────────────────────────────── */
 .codesearch { display: flex; flex-direction: column; height: 100%; min-height: 0; }
 .codesearch-tabs { display: flex; gap: 6px; margin: 8px 0 12px; }
@@ -14424,6 +14804,15 @@ mark.find-hit.active {
   flex: 0 0 auto;
 }
 .sb-pr-ci { display: flex; align-items: center; flex: 0 0 auto; }
+/* A fork's PRs on its parent: a quiet caption, then ordinary rows. */
+.sb-pr-upstream-head {
+  padding: 8px 10px 2px 26px;
+  font-size: 11px;
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .sb-pr-flag { display: flex; align-items: center; flex: 0 0 auto; }
 .sb-pr-flag.blocked { color: #e0a020; }
 /* Inside a stack the row is one of four, and the title has to survive: the
@@ -14601,6 +14990,31 @@ button.insights-row:hover { background: var(--bg-2); }
 :root[data-mode='light'] {
   --word-del-bg: rgba(226, 61, 99, 0.22);
   --word-add-bg: rgba(0, 180, 135, 0.26);
+}
+
+/* ─── Moved code ───────────────────────────────────────────────────────── */
+/* Blue, like git's --color-moved, and in two shades so neighbouring blocks
+   read as separate moves. The arrow points at the block's other end. */
+:root {
+  --diff-moved-bg: rgba(84, 148, 255, 0.13);
+  --diff-moved-alt-bg: rgba(84, 148, 255, 0.22);
+  --diff-moved-fg: #8fb8ff;
+}
+:root[data-mode='light'] {
+  --diff-moved-bg: rgba(40, 110, 230, 0.1);
+  --diff-moved-alt-bg: rgba(40, 110, 230, 0.18);
+  --diff-moved-fg: #1d4fa8;
+}
+:is(.diff-line, .diff-split-cell).moved:not(.line-selected) { background: var(--diff-moved-bg); }
+:is(.diff-line, .diff-split-cell).moved.moved-alt:not(.line-selected) { background: var(--diff-moved-alt-bg); }
+.diff-move-sign { color: var(--diff-moved-fg); font-weight: 600; }
+.diff-split-cell.moved .diff-gutter { position: relative; }
+.diff-split-cell.moved .diff-gutter::after {
+  content: attr(data-move);
+  position: absolute;
+  inset-inline-end: 0;
+  color: var(--diff-moved-fg);
+  font-weight: 600;
 }
 
 /* ─── WIP snapshots ────────────────────────────────────────────────────── */
@@ -14853,6 +15267,14 @@ button.insights-row:hover { background: var(--bg-2); }
 
 /* ─── Error boundary fallback ──────────────────────────────────────────── */
 .error-boundary { padding: 4px 2px; }
+/* Shown for the moment between a whole-app error and the automatic reload. */
+.root-error-reload {
+  height: 100vh;
+  display: grid;
+  place-items: center;
+  color: var(--text-2);
+  font-size: 13px;
+}
 .error-boundary h3 { color: var(--red, #e5484d); }
 .error-boundary-msg {
   white-space: pre-wrap;
@@ -15260,9 +15682,6 @@ mark.diff-find-hit.current { background: #ff9632; color: #10121a; }
 .diff-split { display: flex; flex-direction: column; clear: both; min-width: 0; }
 .diff-split-hunk {
   display: flex; align-items: center; gap: 8px;
-  /* `.diff-stage-hunk` is absolutely positioned; without this it anchors to the
-     scroll container and floats mid-diff instead of sitting on the hunk bar. */
-  position: relative;
   background: var(--bg-2); color: var(--code-comment, var(--text-2));
   padding: 1px 8px; border-top: 1px solid var(--border-soft); border-bottom: 1px solid var(--border-soft);
 }
@@ -15300,16 +15719,10 @@ mark.diff-find-hit.current { background: #ff9632; color: #10121a; }
 .is-nowrap .diff-split-cell,
 .is-nowrap .diff-split-hunk { height: 1.55em; line-height: 1.55; padding-block: 0; }
 .is-nowrap .diff-split-hunk { border-top: 0; border-bottom: 0; }
-/* The hunk bar now runs the length of the longest line, so an end-anchored
-   button would sit off-screen until you scrolled to it. Sticky keeps it against
-   the visible edge of its own column instead. */
+/* The hunk bar runs the length of the longest line; the sticky
+   `.diff-hunk-actions` keeps its buttons against the visible edge of their own
+   column. */
 .is-nowrap .diff-stage-hunk {
-  position: sticky;
-  inset-inline-end: 6px;
-  top: auto;
-  transform: none;
-  margin-inline-start: auto;
-  align-self: center;
   /* Has to fit inside a one-line row without stretching it. */
   padding: 0 7px;
   font-size: 10px;
@@ -15387,6 +15800,52 @@ mark.diff-find-hit.current { background: #ff9632; color: #10121a; }
 .repo-settings { display: flex; flex-direction: column; min-height: 0; }
 .repo-settings-tabs { display: flex; gap: 6px; margin: 10px 0; flex-wrap: wrap; }
 .repo-settings-body { overflow-y: auto; min-height: 0; flex: 1; }
+.repo-image-row { display: flex; align-items: center; gap: 6px; margin-top: 8px; }
+.rip-field { position: relative; flex: 1; min-width: 0; display: flex; }
+.rip-field input { flex: 1; min-width: 0; padding-inline-end: 26px; }
+.rip-field input[aria-invalid='true'] { border-color: var(--yellow); }
+.rip-clear {
+  position: absolute; inset-inline-end: 4px; top: 50%; transform: translateY(-50%);
+  display: grid; place-items: center; width: 18px; height: 18px; padding: 0;
+  border: none; border-radius: 4px; background: transparent; color: var(--text-2); cursor: pointer;
+}
+.rip-clear:hover { background: var(--bg-3, var(--bg-2)); color: var(--text-0); }
+.rip-chevron { transition: transform 0.15s ease; }
+.rip-chevron.open { transform: rotate(180deg); }
+.rip-list {
+  margin-top: 6px; max-height: 232px; overflow-y: auto; padding: 4px;
+  border: 1px solid var(--border-soft); border-radius: 8px; background: var(--bg-1);
+  animation: rip-in 0.12s ease-out;
+}
+@keyframes rip-in { from { opacity: 0; transform: translateY(-3px); } }
+@media (prefers-reduced-motion: reduce) { .rip-list { animation: none; } .rip-chevron { transition: none; } }
+.rip-opt {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 4px 6px; text-align: start;
+  border: none; border-radius: 6px; background: transparent; color: var(--text-1); cursor: pointer; font-size: 12px;
+}
+.rip-opt.active { background: var(--accent-soft); color: var(--text-0); }
+.rip-opt:disabled { opacity: 0.45; cursor: not-allowed; }
+.rip-thumb {
+  flex: none; width: 28px; height: 28px; border-radius: 5px; display: grid; place-items: center; overflow: hidden;
+  color: var(--text-2);
+  /* A checkerboard, so a transparent PNG reads as transparent rather than as a black square. */
+  background: repeating-conic-gradient(var(--bg-2) 0% 25%, var(--bg-1) 0% 50%) 50% / 8px 8px;
+  border: 1px solid var(--border-soft);
+}
+.rip-thumb img { width: 100%; height: 100%; object-fit: contain; }
+.rip-path { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; direction: ltr; }
+.rip-dir { color: var(--text-2); }
+.rip-name { color: inherit; font-weight: 500; }
+.rip-empty { padding: 12px; text-align: center; font-size: 12px; color: var(--text-2); }
+.repo-image-preview {
+  flex: none; width: 28px; height: 28px; border-radius: 6px; display: grid; place-items: center;
+  background: var(--bg-2); border: 1px solid var(--border-soft); color: var(--text-2); overflow: hidden;
+}
+.repo-image-preview img { width: 100%; height: 100%; object-fit: cover; }
+.repo-image-warning {
+  display: flex; align-items: flex-start; gap: 6px; margin: 8px 0 0; font-size: 12px; color: var(--yellow);
+}
+.repo-image-warning svg { flex: none; margin-top: 2px; }
 
 /* ─── Repo logs tab ────────────────────────────────────────────────────── */
 .repo-logs-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
@@ -16896,3 +17355,26 @@ mark.diff-find-hit.current { background: #ff9632; color: #10121a; }
 .ws-plan-name { font-weight: 600; color: var(--text-0); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ws-plan-count { font-size: 11.5px; color: var(--text-2); white-space: nowrap; }
 .ws-plan-note { font-size: 11px; color: var(--text-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* A saved tab whose folder has gone: Locate / Retry instead of the workspace. */
+.missing-repository .welcome-card {
+  max-width: 560px;
+  text-align: center;
+}
+
+.missing-repository .welcome-card > svg {
+  color: var(--text-2);
+}
+
+.missing-repository-path {
+  display: block;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+  font-size: 12px;
+}
+
+.missing-repository-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}

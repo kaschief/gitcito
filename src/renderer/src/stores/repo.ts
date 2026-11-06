@@ -46,10 +46,11 @@ import { isSecretFile } from '../lib/secrets'
 import { isProtectedBranch } from '../lib/repoConfig'
 import { commitHookFailureHint } from '../lib/commitLint'
 import { isLockErrorMessage, lockRepairPlan } from '../lib/gitLocks'
+import { forkUpstream, prsFromFork } from '../lib/hosting'
 import { parseRouteConflict } from '../lib/stackOrder'
 import { timeAgo } from '../lib/timeAgo'
 import { splitCommitMessage } from '../lib/commitMenuCapabilities'
-import { t, interp } from '../i18n'
+import { t, interp, type TranslationKey } from '../i18n'
 
 /** Repos already warned this session about pushing tracked secrets (don't nag). */
 const secretPushWarned = new Set<string>()
@@ -83,6 +84,8 @@ export interface RepoData {
   submodules: SubmoduleInfo[]
   prs: PullRequest[]
   prProvider: HostingProvider
+  /** In a fork checkout, your open PRs on the parent (the `upstream` remote). */
+  upstreamPrs: PullRequest[]
   issues: IssueInfo[]
   milestones: MilestoneInfo[]
   releases: ReleaseInfo[]
@@ -108,6 +111,9 @@ export interface RepoData {
   notedShas: string[]
   /** The opened folder is not a git repo yet — show the "initialize" prompt. */
   notGit: boolean
+  /** A saved tab points at a folder that is no longer on disk (moved, deleted,
+   *  or on an unplugged drive). The tab stays; its view offers Locate / Retry. */
+  missingFolder?: boolean
   /** Last Conflict Radar scan, kept so branch rows can wear their risk dot. */
   mergeRisk: MergePreviewResult | null
   /** Remote refs rewritten by the last fetch, keyed by short name
@@ -137,6 +143,7 @@ const emptyRepo = (path: string): RepoData => ({
   submodules: [],
   prs: [],
   prProvider: null,
+  upstreamPrs: [],
   issues: [],
   milestones: [],
   releases: [],
@@ -502,10 +509,17 @@ async function doRefresh(path: string, slices: RefreshSlice[]): Promise<void> {
   const store = useRepoStore.getState()
   const repo = store.repos[path]
   const maxCount = repo?.maxCount ?? 400
-  const want = new Set(slices)
+  // Coming back from a missing folder, nothing cached is trustworthy: read every slice.
+  const want = new Set(repo?.missingFolder ? ALL_SLICES : slices)
   const keep = <T>(cur: T | undefined, want: boolean, fetch: () => Promise<T>, fallback: T): Promise<T> =>
     want ? fetch() : Promise.resolve(cur ?? fallback)
   try {
+    // One stat() first: a restored tab whose folder has gone would otherwise fail
+    // every read below, and each failure would surface as an error toast.
+    if (!(await gitApi.directoryExists(path))) {
+      store.patch(path, { loading: false, missingFolder: true, notGit: false })
+      return
+    }
     const [
       commits,
       branches,
@@ -569,13 +583,19 @@ async function doRefresh(path: string, slices: RefreshSlice[]): Promise<void> {
       config,
       loading: false,
       notGit: false,
+      missingFolder: false,
       lastRefreshAt: Date.now()
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err)
+    // The folder can disappear between the check above and the reads.
+    if (!(await gitApi.directoryExists(path).catch(() => true))) {
+      store.patch(path, { loading: false, missingFolder: true, notGit: false })
+      return
+    }
     // Opened a plain folder, not a repo — offer to `git init` instead of a toast.
     if (/not a git repository/i.test(message)) {
-      store.patch(path, { loading: false, notGit: true })
+      store.patch(path, { loading: false, notGit: true, missingFolder: false })
       return
     }
     store.patch(path, { loading: false })
@@ -601,6 +621,7 @@ export const useRepoStore = create<RepoStoreState>((set, get) => ({
     evictedUndo.delete(path)
     set((s) => ({ repos: { ...s.repos, [path]: { ...emptyRepo(path), ...revived } } }))
     await get().refresh(path)
+    if (get().repos[path]?.missingFolder) return
     // Hosting data (PRs, releases) lives behind the network, so it is fetched
     // after the local refresh and kept silent — a missing token or offline box
     // should not spam error toasts every time a repo is opened.
@@ -731,7 +752,7 @@ export const useRepoStore = create<RepoStoreState>((set, get) => ({
   refreshPRs: async (path, opts) => {
     const repo = get().repos[path]
     const origin = repo?.remotes.find((r) => r.name === 'origin') ?? repo?.remotes[0]
-    if (!origin) return
+    if (!repo || !origin) return
     const profile = useSettingsStore.getState().activeProfile()
     try {
       const { provider, prs } = await hostingApi.listPRs(origin.url, {
@@ -741,6 +762,19 @@ export const useRepoStore = create<RepoStoreState>((set, get) => ({
         bitbucket: profile.bitbucketToken || undefined
       })
       get().patch(path, { prs, prProvider: provider })
+    } catch (err) {
+      if (!opts?.silent) toast('error', err instanceof Error ? err.message : String(err))
+    }
+    // A fork's own PRs live on the parent, where origin's list cannot see them.
+    // Kept apart from `prs` so stacks and branch lookups only act on origin's.
+    const fork = forkUpstream(repo.remotes)
+    if (!fork) {
+      if (repo.upstreamPrs.length) get().patch(path, { upstreamPrs: [] })
+      return
+    }
+    try {
+      const { prs } = await hostingApi.listPRs(fork.upstream.url, { github: profile.githubToken || undefined })
+      get().patch(path, { upstreamPrs: prsFromFork(prs, fork.fork) })
     } catch (err) {
       if (!opts?.silent) toast('error', err instanceof Error ? err.message : String(err))
     }
@@ -1218,6 +1252,24 @@ function isNoOpConflictError(path: string): (message: string) => boolean {
     return true
   }
 }
+
+/**
+ * The five things a hunk or line selection can be sent to, and how `git apply`
+ * carries each out. Undo applies the same patch the opposite way to the same
+ * target, which is exact: a patch that applied cleanly one way applies cleanly
+ * back. Keys, not strings, so a language switch is picked up (see i18n rule 4).
+ */
+export type HunkActionKind = 'stage' | 'unstage' | 'discard' | 'revert' | 'apply'
+const HUNK_ACTIONS = {
+  stage: { target: 'index', reverse: false, doneKey: 'act.hunkStaged', undoKey: 'undoLabel.hunkStage' },
+  unstage: { target: 'index', reverse: true, doneKey: 'act.hunkUnstaged', undoKey: 'undoLabel.hunkUnstage' },
+  discard: { target: 'worktree', reverse: true, doneKey: 'act.hunkDiscarded', undoKey: 'undoLabel.hunkDiscard' },
+  revert: { target: 'worktree', reverse: true, doneKey: 'act.hunkReverted', undoKey: 'undoLabel.hunkRevert' },
+  apply: { target: 'worktree', reverse: false, doneKey: 'act.hunkApplied', undoKey: 'undoLabel.hunkApply' }
+} as const satisfies Record<
+  HunkActionKind,
+  { target: 'index' | 'worktree'; reverse: boolean; doneKey: TranslationKey; undoKey: TranslationKey }
+>
 
 export const repoActions = {
   // Refreshes every slice on purpose: moving HEAD rewrites the `HEAD -> …`
@@ -2219,6 +2271,72 @@ export const repoActions = {
     )
   },
 
+  /**
+   * Send a hunk or line patch where `kind` says. Discard asks first, since it
+   * throws away work that exists nowhere else; the undo entry (and the WIP
+   * snapshot the main process takes) are the second line of defence. `onStart`
+   * fires once the patch is really on its way (after the confirm, for discard).
+   * Resolves false when git refused the patch.
+   */
+  applyHunk: (
+    path: string,
+    patch: string,
+    kind: HunkActionKind,
+    ignoreWhitespace = false,
+    onStart?: () => void
+  ): Promise<boolean> => {
+    const op = HUNK_ACTIONS[kind]
+    // A working-tree action may have needed the three-way merge; when that left
+    // conflict markers, say so after the success toast rather than let it pass
+    // as a clean change.
+    let conflicts = 0
+    // Set when the action went through that merge: undo and redo then restore
+    // the file's exact bytes, since the patch itself never applied as is.
+    let merge: string | undefined
+    const send = async (reverse: boolean): Promise<void> => {
+      const result = await gitApi.applyHunkPatch(path, patch, op.target, reverse, ignoreWhitespace)
+      conflicts = result.conflicts
+      merge = result.merge
+    }
+    const undo = (): Promise<void> =>
+      merge ? gitApi.restoreHunkMerge(path, merge, 'before') : send(!op.reverse)
+    const redo = (): Promise<void> => (merge ? gitApi.restoreHunkMerge(path, merge, 'after') : send(op.reverse))
+    const perform = (): Promise<boolean> => {
+      onStart?.()
+      return useRepoStore
+        .getState()
+        .run(
+          path,
+          t(op.doneKey),
+          () => send(op.reverse),
+          { label: t(op.undoKey), undo, redo },
+          null,
+          (msg) => {
+            if (!/patch does not apply|patch failed/i.test(msg)) return false
+            toast('error', t('hunk.doesNotApply'), { repoPath: path })
+            return true
+          },
+          ['status', 'treeStatus']
+        )
+        .then((ok) => {
+          if (ok && conflicts > 0) toast('info', t('hunk.mergedWithConflicts'), { repoPath: path })
+          return ok
+        })
+    }
+    if (kind !== 'discard') return perform()
+    return new Promise((resolve) => {
+      useUIStore.getState().openModal({
+        kind: 'confirm',
+        danger: true,
+        title: t('hunk.discardConfirmTitle'),
+        message: t('hunk.discardConfirmMessage'),
+        confirmLabel: t('hunk.discardConfirmOk'),
+        onConfirm: () => void perform().then(resolve),
+        onCancel: () => resolve(false)
+      })
+    })
+  },
+
   stashDrop: (path: string, index = 0) =>
     useRepoStore.getState().run(path, t('act.droppedStash'), () => gitApi.stashDrop(path, index), undefined, null, undefined, ['stashes']),
 
@@ -2400,8 +2518,60 @@ export const repoActions = {
   unstage: (path: string, files: string[]) =>
     useRepoStore.getState().run(path, interp(t('act.unstaged'), { n: files.length }), () => gitApi.unstage(path, files), undefined, null, undefined, ['status', 'treeStatus']),
   unstageAll: (path: string) => useRepoStore.getState().run(path, t('act.unstagedAll'), () => gitApi.unstageAll(path), undefined, null, undefined, ['status', 'treeStatus']),
-  discard: (path: string, files: string[], untracked: boolean) =>
-    useRepoStore.getState().run(path, interp(t('act.discarded'), { n: files.length }), () => gitApi.discard(path, files, untracked), undefined, null, undefined, ['status', 'treeStatus']),
+  /**
+   * Discard files (one, a folder's worth, or with `all` every change, staged
+   * and unstaged) after a confirm. What is staged and what is on disk is saved
+   * first, so Undo puts the discarded paths back exactly, staged parts and new
+   * files included. The confirm says whether Undo can: it cannot while a merge
+   * still has conflicts, because the index cannot be saved then.
+   */
+  discardChanges: async (
+    path: string,
+    files: { path: string; untracked?: boolean }[],
+    opts: { all: true } | { all?: false; label: string }
+  ): Promise<void> => {
+    // A file both staged and changed again is listed twice; discard it once.
+    const unique = [...new Map(files.map((f) => [f.path, f])).values()]
+    const paths = unique.map((f) => f.path)
+    if (paths.length === 0) return
+    const initial = await gitApi.captureWork(path).catch(() => null)
+    let saved = initial
+    const perform = async (): Promise<void> => {
+      // The dialog may sit open while files keep changing, and redo runs later
+      // still: save again right before discarding so Undo restores what was
+      // actually thrown away.
+      if (initial) saved = (await gitApi.captureWork(path).catch(() => null)) ?? saved
+      // Unstaging first turns staged-new files into files git never had;
+      // `discard` removes those from disk as well. (It fails before the first
+      // commit, where there is no HEAD to reset to; discard what it can anyway.)
+      if (opts.all) await gitApi.unstageAll(path).catch(() => undefined)
+      const untracked = unique.filter((f) => f.untracked).map((f) => f.path)
+      const tracked = unique.filter((f) => !f.untracked).map((f) => f.path)
+      if (tracked.length) await gitApi.discard(path, tracked, false)
+      if (untracked.length) await gitApi.discard(path, untracked, true)
+    }
+    const undoEntry: UndoEntry | undefined = initial
+      ? {
+          label: opts.all ? t('undoLabel.discardAll') : interp(t('undoLabel.discard'), { what: opts.label }),
+          undo: () => gitApi.restoreWork(path, saved ?? initial, paths),
+          redo: perform
+        }
+      : undefined
+    const message = opts.all
+      ? t(initial ? 'composer.discardAllMsgUndoable' : 'composer.discardAllMsg')
+      : interp(t(initial ? 'composer.discardMsgUndoable' : 'composer.discardMsg'), { file: opts.label })
+    useUIStore.getState().openModal({
+      kind: 'confirm',
+      title: t(opts.all ? 'composer.discardAllTitle' : 'composer.discardChanges'),
+      message,
+      danger: true,
+      confirmLabel: t(opts.all ? 'composer.discardAllConfirm' : 'composer.discardConfirm'),
+      onConfirm: () =>
+        void useRepoStore
+          .getState()
+          .run(path, interp(t('act.discarded'), { n: paths.length }), perform, undoEntry, null, undefined, ['status', 'treeStatus'])
+    })
+  },
 
   addToGitignore: (path: string, patterns: string[], label?: string) =>
     useRepoStore.getState().run(path, interp(t('act.addedToGitignore'), { what: label ?? interp(t('act.nEntries'), { n: patterns.length }) }), async () => {

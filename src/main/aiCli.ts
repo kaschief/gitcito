@@ -1,4 +1,8 @@
 import { execFile } from 'node:child_process'
+import { existsSync } from 'node:fs'
+import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import type { AICliBinary, AIConfig } from '../shared/types'
 import type { TokenUsage } from './analytics'
 import type { ChatMessage, ModelReply } from './aiTransport'
@@ -35,6 +39,12 @@ interface CliSpec {
   args: (model: string) => string[]
   /** Whether the prompt goes on stdin (true) or as the final argument. */
   stdin: boolean
+  /**
+   * When set, the prompt is written to a temporary file and this argv is
+   * appended instead of using stdin — for CLIs with no stdin prompt mode
+   * (`devin -p --prompt-file`), which also sidesteps the ~32k argv limit.
+   */
+  promptFile?: (path: string) => string[]
   /** Models worth offering before the user types their own. */
   models: string[]
 }
@@ -61,6 +71,16 @@ const CLIS: Record<AICliBinary, CliSpec> = {
     args: (model) => ['exec', ...(model ? ['--model', model] : []), '-'],
     stdin: true,
     models: []
+  },
+  devin: {
+    bin: 'devin',
+    label: 'Devin CLI',
+    args: (model) => [...(model ? ['--model', model] : [])],
+    stdin: false,
+    // `devin -p` cannot read a prompt from stdin; --prompt-file also avoids
+    // the Windows argv length cap on large prompts.
+    promptFile: (path) => ['-p', '--prompt-file', path],
+    models: ['adaptive', 'swe-2-medium', 'swe-2-high', 'swe-2-max']
   }
 }
 
@@ -79,13 +99,14 @@ function run(
   file: string,
   args: string[],
   input: string,
-  timeout = CLI_TIMEOUT_MS
+  timeout = CLI_TIMEOUT_MS,
+  cwd?: string
 ): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolve, reject) => {
     const child = execFile(
       file,
       args,
-      { timeout, maxBuffer: CLI_MAX_BUFFER, windowsHide: true },
+      { timeout, maxBuffer: CLI_MAX_BUFFER, windowsHide: true, cwd },
       (err, stdout, stderr) => {
         if (err && (err as NodeJS.ErrnoException).code === 'ENOENT') {
           reject(new Error(`\`${file}\` was not found. Install it, or set an explicit path on the account.`))
@@ -153,8 +174,27 @@ export async function runCliModel(cfg: AIConfig, messages: ChatMessage[]): Promi
   const spec = cliSpec(binary)
   const file = (cfg.cliPath ?? '').trim() || spec.bin
   const model = (cfg.model ?? '').trim()
+  const prompt = flattenMessages(messages)
+  // The caller stamps the repo path here so agent CLIs answer with the
+  // codebase in reach — without it they run blind in the app's directory.
+  const stamped = (cfg.cliCwd ?? '').trim()
+  const cwd = stamped && existsSync(stamped) ? stamped : undefined
 
-  const { code, stdout, stderr } = await run(file, spec.args(model), flattenMessages(messages))
+  let code: number
+  let stdout: string
+  let stderr: string
+  if (spec.promptFile) {
+    const dir = await mkdtemp(join(tmpdir(), 'gitcito-prompt-'))
+    try {
+      const promptPath = join(dir, 'prompt.txt')
+      await writeFile(promptPath, prompt, 'utf8')
+      ;({ code, stdout, stderr } = await run(file, [...spec.args(model), ...spec.promptFile(promptPath)], '', undefined, cwd))
+    } finally {
+      await rm(dir, { recursive: true, force: true }).catch(() => {})
+    }
+  } else {
+    ;({ code, stdout, stderr } = await run(file, spec.args(model), prompt, undefined, cwd))
+  }
   if (code !== 0) {
     const detail = (stderr || stdout).trim().slice(0, 300)
     throw new Error(`\`${spec.bin}\` exited with code ${code}${detail ? `: ${detail}` : ''}`)
